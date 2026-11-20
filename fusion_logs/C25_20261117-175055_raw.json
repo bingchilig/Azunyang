@@ -1,0 +1,1194 @@
+{
+  "scripts": {
+    "lib": "import adsk.core, adsk.fusion, json, math\nA=adsk.core.Application.get()\nD=adsk.fusion.Design.cast(A.activeProduct)\nR=D.rootComponent\nU=D.unitsManager\nV=adsk.core.ValueInput.createByString\nP=adsk.core.Point3D.create\nOP=adsk.fusion.FeatureOperations\ndef ev(expr):\n    return U.evaluateExpression(str(expr),'mm')\ndef point(x,y,z='0 mm'):\n    return P(ev(x),ev(y),ev(z))\ndef param(n,e,unit='mm',comment='[Autonomous C2-C5] provisional detail; fabrication validation HOLD'):\n    p=D.userParameters.itemByName(n)\n    if p: p.expression=e\n    else: p=D.userParameters.add(n,V(e),unit,comment)\n    return p\ndef occ(n):\n    found=[o for o in R.occurrences if o.component.name==n]\n    if found: return found[0]\n    o=R.occurrences.addNewComponent(adsk.core.Matrix3D.create()); o.component.name=n; return o\ndef material(key):\n    lib=A.materialLibraries.itemById('C1EEA57C-3F56-45FC-B8CB-A9EC46A9994C')\n    if key=='Al': return lib.materials.itemById('PrismMaterial-160')\n    if key=='Steel': return lib.materials.itemById('PrismMaterial-018')\n    if key=='Rubber': return lib.materials.itemById('PrismMaterial-059')\n    name='AZN_'+key+'_TDS_density'\n    m=D.materials.itemByName(name)\n    if not m:\n        m=D.materials.addByCopy(lib.materials.itemById('PrismMaterial-279' if key=='PETG' else 'PrismMaterial-059'),name)\n        for prop in m.materialProperties:\n            if 'Density' in prop.id and prop.objectType.endswith('FloatProperty'):\n                prop.value=1250.0 if key=='PETG' else 1220.0\n            if prop.id.startswith('structural_Young_modulus'):\n                prop.value=2780000.0 if key=='PETG' else 9800.0\n            if prop.id=='structural_Minimum_tensile_strength':\n                prop.value=51000.0 if key=='PETG' else 27300.0\n    return m\ndef plane(c,name,axis,offset):\n    existing=next((p for p in c.constructionPlanes if p.name==name),None)\n    if existing: return existing\n    pi=c.constructionPlanes.createInput()\n    base=c.xZConstructionPlane if axis=='Y' else c.xYConstructionPlane\n    pi.setByOffset(base,V(offset))\n    pl=c.constructionPlanes.add(pi); pl.name=name; pl.isLightBulbOn=False; return pl\ndef sk(c,name,axis,offset):\n    s=next((s for s in c.sketches if s.name==name),None)\n    if s: return s\n    s=c.sketches.add(plane(c,name+'_plane',axis,offset)); s.name=name\n    return s\ndef anchor(s,p,x,y):\n    # Coordinates are signed by seed geometry, driving lengths remain positive.\n    for coord,expr,orientation in [(p.geometry.x,x,adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation),(p.geometry.y,y,adsk.fusion.DimensionOrientations.VerticalDimensionOrientation)]:\n        if abs(coord)<1e-8:\n            if orientation==adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation:\n                s.geometricConstraints.addVerticalPoints(s.originPoint,p)\n            else: s.geometricConstraints.addHorizontalPoints(s.originPoint,p)\n        else:\n            dim=s.sketchDimensions.addDistanceDimension(s.originPoint,p,orientation,p.geometry)\n            dim.parameter.expression='abs('+expr+')'\ndef circle(s,x,z,dia):\n    p=point(x,z)\n    prior=next((q for q in s.sketchCurves.sketchCircles if q.centerSketchPoint.geometry.distanceTo(p)<1e-7),None)\n    c=s.sketchCurves.sketchCircles.addByCenterRadius(p,ev(dia)/2)\n    txt=point('('+x+')+('+dia+')','('+z+')+('+dia+')')\n    s.sketchDimensions.addDiameterDimension(c,txt).parameter.expression=dia\n    if prior:\n        if c.centerSketchPoint != prior.centerSketchPoint:\n            s.geometricConstraints.addConcentric(c,prior)\n    elif abs(p.x)+abs(p.y)<1e-8:\n        if c.centerSketchPoint != s.originPoint:\n            s.geometricConstraints.addCoincident(c.centerSketchPoint,s.originPoint)\n    else: anchor(s,c.centerSketchPoint,x,z)\n    return c\ndef rect(s,x,z,w,h):\n    lines=s.sketchCurves.sketchLines.addTwoPointRectangle(point(x,z),point('('+x+')+('+w+')','('+z+')+('+h+')'))\n    for i in [0,2]: s.geometricConstraints.addHorizontal(lines.item(i))\n    for i in [1,3]: s.geometricConstraints.addVertical(lines.item(i))\n    anchor(s,lines.item(0).startSketchPoint,x,z)\n    for i,expr in [(0,w),(1,h)]:\n        ln=lines.item(i)\n        s.sketchDimensions.addDistanceDimension(ln.startSketchPoint,ln.endSketchPoint,adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,ln.startSketchPoint.geometry).parameter.expression=expr\n    return lines\ndef extrude(c,s,name,t,key='Al',cut=None):\n    profiles=adsk.core.ObjectCollection.create()\n    # For nested circles/rectangles choose only outer material regions.\n    candidates=[p for p in s.profiles]\n    if len(candidates)>1:\n        target=max(candidates,key=lambda p:(p.profileLoops.count,p.areaProperties().area))\n        profiles.add(target)\n    else:\n        for p in candidates: profiles.add(p)\n    ei=c.features.extrudeFeatures.createInput(profiles,OP.CutFeatureOperation if cut else OP.NewBodyFeatureOperation)\n    ei.setOneSideExtent(adsk.fusion.DistanceExtentDefinition.create(V(t)),adsk.fusion.ExtentDirections.NegativeExtentDirection if abs(s.transform.getCell(1,2)+1)<1e-7 else adsk.fusion.ExtentDirections.PositiveExtentDirection)\n    if cut: ei.participantBodies=cut\n    f=c.features.extrudeFeatures.add(ei); f.name=name\n    if not cut:\n        for b in f.bodies: b.name=name; b.material=material(key)\n    s.isLightBulbOn=False\n    return f\ndef ring(c,name,x,z,y,od,ident,t,key='Al'):\n    b=next((b for b in c.bRepBodies if b.name==name),None)\n    if b:return b\n    s=sk(c,name+'_sk','Y',y); circle(s,x,z,od)\n    if ident:circle(s,x,z,ident)\n    return extrude(c,s,name,t,key).bodies.item(0)\ndef box(c,name,x,y,z,w,depth,height,key='Al'):\n    b=next((b for b in c.bRepBodies if b.name==name),None)\n    if b:return b\n    s=sk(c,name+'_sk','Z',z); rect(s,x,y,w,depth)\n    return extrude(c,s,name,height,key).bodies.item(0)\ndef jo(c,name,x,y,z):\n    old=c.jointOrigins.itemByName(name)\n    if old:return old\n    j=c.jointOrigins.createInput(adsk.fusion.JointGeometry.createByPoint(c.originConstructionPoint))\n    j.offsetX=V(x);j.offsetY=V(y);j.offsetZ=V(z)\n    result=c.jointOrigins.add(j);result.name=name;return result\ndef joint(name,moving,source,target,targetorigin,revolute=True):\n    old=R.joints.itemByName(name)\n    if old:return old\n    p=source.createForAssemblyContext(moving); q=targetorigin.createForAssemblyContext(target)\n    assert p.assemblyContext.name==moving.name and q.assemblyContext.name==target.name\n    ji=R.joints.createInput(p,q)\n    if revolute:ji.setAsRevoluteJointMotion(adsk.fusion.JointDirections.YAxisJointDirection)\n    else:ji.setAsRigidJointMotion()\n    ji.isFlipped=False\n    j=R.joints.add(ji); j.name=name\n    print(json.dumps({'joint':name,'one':j.occurrenceOne.name,'two':j.occurrenceTwo.name}))\n    return j\ndef cutcircles(c,name,y,t,holes,bodies):\n    if any(f.name==name for f in c.features.extrudeFeatures):return\n    s=sk(c,name+'_sk','Y',y)\n    for x,z,dia in holes:circle(s,x,z,dia)\n    pc=adsk.core.ObjectCollection.create()\n    for p in s.profiles: pc.add(p)\n    ei=c.features.extrudeFeatures.createInput(pc,OP.CutFeatureOperation)\n    ei.setOneSideExtent(adsk.fusion.DistanceExtentDefinition.create(V(t)),adsk.fusion.ExtentDirections.PositiveExtentDirection)\n    ei.participantBodies=bodies\n    f=c.features.extrudeFeatures.add(ei);f.name=name;s.isLightBulbOn=False\n    return f\n\n\r\n\ndef merge(c,base,others,name):\n coll=adsk.core.ObjectCollection.create()\n for b in others:coll.add(b)\n ci=c.features.combineFeatures.createInput(base,coll);ci.operation=OP.JoinFeatureOperation\n f=c.features.combineFeatures.add(ci);f.name=name\n return base\n",
+    "c2tail": "def run(_context: str):\n assert A.activeDocument.name=='Azunyang_v0.1'\n for n,e in [\n ('hip_plate_W_trial','28 mm'),('hip_end_D_trial','54 mm'),('knee_end_D_trial','44 mm'),\n ('hip_inner_y_trial','y_hipmot + act_mount_L + pin_H + clearance_trial - leg_y'),\n ('clearance_trial','0.5 mm')]:\n  if n=='hip_inner_y_trial':continue\n  param(n,e)\n param('hip_inner_y_trial','y_hipmot + act_mount_L + pin_H + clearance_trial - leg_y')\n for n,e in [('hip_outer_y_trial','y_support_trial-leg_y-brg_W/2'),('knee_brg_OD_trial','28 mm'),('knee_brg_ID_trial','12 mm'),('knee_brg_W_trial','8 mm'),('shaft_brg_OD_trial','21 mm'),('shaft_brg_W_trial','5 mm'),('shank_W_trial','28 mm'),('shank_B_trial','22 mm'),('shank_wall_trial','3 mm'),('pulley_flange_t_trial','1 mm'),('pulley_hub_D_trial','24 mm'),('pulley_hub_L_trial','5 mm'),('idler_D_trial','45 mm'),('idler_slot_L_trial','12 mm'),('idler_pin_D_trial','5 mm'),('bracket_W_trial','24 mm'),('bracket_top_trial','48 mm'),('foot_H_trial','16 mm')]:param(n,e)\n c=occ('FL_abad_link').component\n ring(c,'AZN_C2_hip_mount_plate','hip_spacing/2','0 mm','y_hipmot-plate_t','act_D+8 mm','pilot_D+2 mm','plate_t')\n ring(c,'AZN_C2_knee_mount_plate','hip_spacing/2','0 mm','y_kneemot-plate_t','act_D+8 mm','pilot_D+2 mm','plate_t')\n ring(c,'AZN_C2_spindle_flange','hip_spacing/2','0 mm','y_kneemot-plate_t','pilot_D+8 mm','shaft_brg_OD_trial','plate_t','Steel')\n ring(c,'AZN_C2_fixed_spindle','hip_spacing/2','0 mm','y_support_trial-brg_W/2','brg_ID','shaft_brg_OD_trial','y_kneemot-plate_t-(y_support_trial-brg_W/2)','Steel')\n box(c,'AZN_C2_top_bridge','hip_spacing/2-bracket_W_trial/2','abad_y','bracket_top_trial','bracket_W_trial','y_kneemot-abad_y','plate_t')\n for label,y in [('hip','y_hipmot-plate_t'),('knee','y_kneemot-plate_t')]:\n  box(c,'AZN_C2_riser_'+label,'hip_spacing/2-bracket_W_trial/2',y,'act_D/2','bracket_W_trial','plate_t','bracket_top_trial-act_D/2')\n print(json.dumps({'stage':'C2','bodies':[b.name for b in c.bRepBodies],'parameters':D.userParameters.count}))\n",
+    "c3tail": "def run(_context:str):\n o=occ('FL_hip_link');c=o.component\n plates=[]\n for side,y in [('inner','hip_inner_y_trial'),('outer','hip_outer_y_trial')]:\n  s=sk(c,'AZN_C3_'+side+'_sk','Y',y);rect(s,'-hip_plate_W_trial/2','0 mm','hip_plate_W_trial','L_thigh')\n  b=extrude(c,s,'AZN_C3_'+side+'_plate','plate_t').bodies.item(0)\n  h=ring(c,'AZN_C3_'+side+'_hip_end','0 mm','0 mm',y,'hip_end_D_trial',None,'plate_t')\n  k=ring(c,'AZN_C3_'+side+'_knee_end','0 mm','L_thigh',y,'knee_end_D_trial',None,'plate_t')\n  merge(c,b,[h,k],'AZN_C3_'+side+'_union')\n  cutcircles(c,'AZN_C3_'+side+'_bores',y,'plate_t',[('0 mm','0 mm','brg_OD' if side=='outer' else 'drive_shaft_D_trial'),('0 mm','L_thigh','knee_brg_OD_trial')],[b])\n  plates.append(b)\n ring(c,'AZN_C3_6806','0 mm','0 mm','hip_outer_y_trial','brg_OD','brg_ID','brg_W','Steel')\n ring(c,'AZN_C3_6806_seat','0 mm','0 mm','hip_outer_y_trial+plate_t','hip_end_D_trial','brg_OD','brg_W-plate_t')\n for label,y in [('inner','hip_outer_y_trial-1 mm'),('outer','hip_outer_y_trial+brg_W')]:\n  ring(c,'AZN_C3_retainer_'+label,'0 mm','0 mm',y,'hip_end_D_trial','brg_OD-4 mm','1 mm')\n for label,z in [('upper','L_thigh*0.3'),('lower','L_thigh*0.6')]:\n  box(c,'AZN_C3_cross_'+label,'-hip_plate_W_trial/2','hip_inner_y_trial+plate_t','-('+z+')','hip_plate_W_trial','hip_outer_y_trial-hip_inner_y_trial-plate_t','plate_t')\n abad=occ('FL_abad_link')\n joint('FL_hip_joint',o,jo(c,'AZN_C3_origin','0 mm','0 mm','0 mm'),abad,jo(abad.component,'AZN_C3_hip_axis','hip_spacing/2','leg_y','0 mm'))\n jo(c,'AZN_C4_knee_axis','0 mm','0 mm','-L_thigh')\n ac=abad.component\n ring(ac,'AZN_C3_20T_GT_envelope','hip_spacing/2','0 mm','y_belt-belt_w/2','pd_s-1.14 mm','drive_shaft_D_trial','belt_w')\n ring(ac,'AZN_C3_drive_shaft','hip_spacing/2','0 mm','y_belt-belt_w/2','drive_shaft_D_trial',None,'y_kneemot+pin_H-(y_belt-belt_w/2)','Steel')\n for label,y in [('a','y_support_trial-brg_W/2'),('b','y_support_trial-brg_W/2+shaft_brg_W_trial')]:\n  ring(ac,'AZN_C3_6801_'+label,'hip_spacing/2','0 mm',y,'shaft_brg_OD_trial','drive_shaft_D_trial','shaft_brg_W_trial','Steel')\n print(json.dumps({'stage':'C3','bodies':c.bRepBodies.count,'joint':R.joints.itemByName('FL_hip_joint').healthState}))\n",
+    "c3belt": "def run(_context:str):\n param('idler_x_trial','25 mm');param('belt_envelope_t_trial','3.81 mm')\n hip=occ('FL_hip_link');c=hip.component\n # Explicit pitch reference; geometry denotes belt envelope, not tooth mesh.\n s=sk(c,'AZN_C3_GT3_belt_path_sk','Y','-belt_w/2')\n C=ev('belt_C');rs=ev('pd_s')/2;rl=ev('pd_l')/2\n a=math.asin((rl-rs)/C)\n arcs=s.sketchCurves.sketchArcs;lines=s.sketchCurves.sketchLines\n for add in [ev('clearance_trial')-ev('1.14 mm')/2,ev('clearance_trial')-ev('1.14 mm')/2+ev('belt_envelope_t_trial')]:\n  r=rs+add;q=rl+add\n  p1=P(-r*math.cos(a),-r*math.sin(a),0);p2=P(r*math.cos(a),-r*math.sin(a),0)\n  p3=P(q*math.cos(a),C-q*math.sin(a),0);p4=P(-q*math.cos(a),C-q*math.sin(a),0)\n  arcs.addByCenterStartSweep(P(0,0,0),p1,math.pi-2*a)\n  lines.addByTwoPoints(p2,p3)\n  arcs.addByCenterStartSweep(P(0,C,0),p3,math.pi+2*a)\n  lines.addByTwoPoints(p4,p1)\n b=extrude(c,s,'AZN_C3_GT3_belt_reference','belt_w','Rubber').bodies.item(0)\n b.attributes.add('Azunyang','HOLD','Reference 2-pulley envelope only; 530 mm idler routing requires recalculation. Exclude from rigid interference and link inertial mass.')\n b.isLightBulbOn=False\n # Slot bracket on outer side; slider travel is dimension driven.\n br=box(c,'AZN_C3_idler_bracket','idler_x_trial-idler_slot_L_trial','hip_outer_y_trial+plate_t','-L_thigh/2-10 mm','2*idler_slot_L_trial','plate_t','20 mm')\n ss=sk(c,'AZN_C3_idler_slot_sk','Y','hip_outer_y_trial+plate_t')\n rect(ss,'idler_x_trial-idler_slot_L_trial/2','L_thigh/2-idler_pin_D_trial/2','idler_slot_L_trial','idler_pin_D_trial')\n extrude(c,ss,'AZN_C3_idler_slot','plate_t',cut=[br])\n ring(c,'AZN_C3_idler_envelope','idler_x_trial','L_thigh/2','-belt_w/2','idler_D_trial','idler_pin_D_trial','belt_w')\n print(json.dumps({'stage':'C3_belt_idler','beltReferenceVolume_cm3':b.volume,'hold':'pitch path and tooth form verification'}))\n",
+    "c4tail": "def run(_context:str):\n h=occ('FL_hip_link');o=occ('FL_knee_link');c=o.component\n ring(c,'AZN_C4_30T_GT_envelope','0 mm','0 mm','-belt_w/2','pd_l-1.14 mm','knee_brg_ID_trial','belt_w')\n ring(c,'AZN_C4_knee_shaft','0 mm','0 mm','hip_inner_y_trial+plate_t-knee_brg_W_trial','knee_brg_ID_trial',None,'hip_outer_y_trial+knee_brg_W_trial+8 mm-(hip_inner_y_trial+plate_t-knee_brg_W_trial)','Steel')\n ring(c,'AZN_C4_shank_hub','0 mm','0 mm','hip_outer_y_trial+knee_brg_W_trial','knee_end_D_trial','knee_brg_ID_trial','8 mm','PETG')\n s=sk(c,'AZN_C4_shank_box_sk','Z','-L_shank+5 mm')\n rect(s,'-shank_W_trial/2','-shank_B_trial/2','shank_W_trial','shank_B_trial')\n rect(s,'-shank_W_trial/2+shank_wall_trial','-shank_B_trial/2+shank_wall_trial','shank_W_trial-2*shank_wall_trial','shank_B_trial-2*shank_wall_trial')\n extrude(c,s,'AZN_C4_shank_box','L_shank-35 mm','PETG')\n box(c,'AZN_C4_shank_neck','-shank_W_trial/2','hip_outer_y_trial+knee_brg_W_trial','-40 mm','shank_W_trial','8 mm','30 mm','PETG')\n box(c,'AZN_C4_shank_crosshead','-shank_W_trial/2','-shank_B_trial/2','-40 mm','shank_W_trial','hip_outer_y_trial+knee_brg_W_trial+8 mm+shank_B_trial/2','8 mm','PETG')\n hc=h.component\n for side,y in [('inner','hip_inner_y_trial+plate_t-knee_brg_W_trial'),('outer','hip_outer_y_trial')]:\n  ring(hc,'AZN_C4_6001_'+side,'0 mm','L_thigh',y,'knee_brg_OD_trial','knee_brg_ID_trial','knee_brg_W_trial','Steel')\n joint('FL_knee_joint',o,jo(c,'AZN_C4_origin','0 mm','0 mm','0 mm'),h,hc.jointOrigins.itemByName('AZN_C4_knee_axis'))\n f=occ('FL_foot');fc=f.component\n s=sk(fc,'AZN_C4_foot_sk','Z','-foot_H_trial/2');circle(s,'0 mm','0 mm','foot_D')\n extrude(fc,s,'AZN_C4_TPU_pad','foot_H_trial','TPU')\n joint('AZN_C4_foot_fixed',f,jo(fc,'AZN_C4_foot_origin','0 mm','0 mm','0 mm'),o,jo(c,'AZN_C4_foot_target','0 mm','0 mm','-L_shank'),False)\n for n,e in [('stand_hip_trial','acos(stance_h/(2*L_thigh))'),('stand_knee_trial','-2*stand_hip_trial')]:param(n,e,'deg')\n R.joints.itemByName('FL_hip_joint').jointMotion.rotationValue=D.userParameters.itemByName('stand_hip_trial').value\n R.joints.itemByName('FL_knee_joint').jointMotion.rotationValue=D.userParameters.itemByName('stand_knee_trial').value\n D.computeAll()\n print(json.dumps({'stage':'C4','kneeBodies':c.bRepBodies.count,'footBodies':fc.bRepBodies.count}))\n",
+    "fix1": "def run(_context:str):\n ac=occ('FL_abad_link').component;hc=occ('FL_hip_link').component;kc=occ('FL_knee_link').component\n def body(c,n):return next(b for b in c.bRepBodies if b.name==n)\n for side in ['hip','knee']:\n  merge(ac,body(ac,'AZN_C2_'+side+'_mount_plate'),[body(ac,'AZN_C2_riser_'+side)],'AZN_C5_'+side+'_weld')\n cutcircles(ac,'AZN_C5_flange_fit','y_kneemot-plate_t','plate_t',[('hip_spacing/2','0 mm','pilot_D+8 mm')],[body(ac,'AZN_C2_knee_mount_plate')])\n cutcircles(ac,'AZN_C5_retainer_relief','y_kneemot-plate_t','1.5 mm',[('hip_spacing/2','0 mm','hip_end_D_trial+1 mm')],[body(ac,'AZN_C2_knee_mount_plate'),body(ac,'AZN_C2_spindle_flange')])\n f=ac.features.extrudeFeatures.itemByName('AZN_C2_fixed_spindle')\n f.extentOne.distance.expression='y_kneemot-plate_t+1.5 mm-(y_support_trial-brg_W/2)'\n p=next(p for p in hc.constructionPlanes if p.name=='AZN_C3_cross_lower_sk_plane')\n p.definition.offset.expression='-L_thigh*0.7'\n merge(kc,body(kc,'AZN_C4_shank_box'),[body(kc,'AZN_C4_shank_crosshead'),body(kc,'AZN_C4_shank_neck'),body(kc,'AZN_C4_shank_hub')],'AZN_C5_shank_union')\n # End the shank at foot top, preserving the foot center and 200 mm linkage.\n p=next(p for p in kc.constructionPlanes if p.name=='AZN_C4_shank_box_sk_plane');p.definition.offset.expression='-L_shank+foot_H_trial/2'\n kc.features.extrudeFeatures.itemByName('AZN_C4_shank_box').extentOne.distance.expression='L_shank-30 mm-foot_H_trial/2'\n D.computeAll()\n print(json.dumps({'corrections':'mount overlaps, retainer relief, idler clearance, shank union, foot contact'}))\n",
+    "beltfix": "\nimport math,json\nr=20*5/(2*math.pi);b=30*5/(2*math.pi);q=22.5+1.905;C=200\ndef calc(x):\n def norm(dx,dy,k):\n  d=math.hypot(dx,dy);a=math.atan2(dy,dx);t=math.acos(k/d)\n  v=[(math.cos(a-t),math.sin(a-t)),(math.cos(a+t),math.sin(a+t))]\n  return max(v,key=lambda z:z[0])\n ns=norm(x,100,r+q);nb=norm(x,-100,b+q);nl=(-math.sqrt(1-((b-r)/C)**2),-(b-r)/C)\n a=lambda n:math.atan2(n[1],n[0])\n sa=(a(ns)-a(nl))%(2*math.pi);ba=(a(nl)-a(nb))%(2*math.pi);ia=(a(ns)-a(nb))%(2*math.pi)\n L=math.sqrt(x*x+10000-(r+q)**2)+math.sqrt(x*x+10000-(b+q)**2)+math.sqrt(C*C-(b-r)**2)+r*sa+b*ba+q*ia\n return L,ns,nb,nl,sa,ba,ia\n\n\ndef run(_context:str):\n global r,b,q,C\n r=ev('pd_s')*10/2;b=ev('pd_l')*10/2;C=ev('L_thigh')*10;q=ev('idler_D_trial')*10/2+ev('belt_envelope_t_trial')*10/2\n lo,hi=20.,25.\n for _ in range(50):\n  mid=(lo+hi)/2\n  if calc(mid)[0]>ev('belt_L')*10:lo=mid\n  else:hi=mid\n x=(lo+hi)/2\n param('idler_x_trial',str(x)+' mm',comment='530 mm pitch path, back idler radius + half envelope thickness; re-solve if belt parameters change')\n hc=occ('FL_hip_link').component\n # Supersede just the old reference extrusion.\n old=hc.features.extrudeFeatures.itemByName('AZN_C3_GT3_belt_reference')\n if old:old.deleteMe()\n L,ns,nb,nl,sa,ba,ia=calc(x)\n s=sk(hc,'AZN_C5_GT3_530_path_sk','Y','-belt_w/2')\n def pt(x,y):return point(str(x)+' mm',str(y)+' mm')\n def pos(cx,cy,rad,n):return pt(cx+rad*n[0],cy+rad*n[1])\n def arc(cx,cy,rad,n,ang):\n  return s.sketchCurves.sketchArcs.addByCenterStartSweep(pt(cx,cy),pos(cx,cy,rad,n),ang)\n half=ev('belt_envelope_t_trial')*10/2\n for delta in [-half,half]:\n  rs=r+delta;rb=b+delta;ri=q-delta\n  a1=arc(0,0,rs,nl,sa)\n  a2=arc(x,100,ri,(-ns[0],-ns[1]),-ia)\n  a3=arc(0,C,rb,nb,ba)\n  s.sketchCurves.sketchLines.addByTwoPoints(a1.endSketchPoint,a2.startSketchPoint)\n  s.sketchCurves.sketchLines.addByTwoPoints(a2.endSketchPoint,a3.startSketchPoint)\n  s.sketchCurves.sketchLines.addByTwoPoints(a3.endSketchPoint,a1.startSketchPoint)\n f=extrude(hc,s,'AZN_C5_GT3_530_belt_envelope','belt_w','Rubber')\n f.bodies.item(0).attributes.add('AZN','HOLD','Smooth tooth-mesh envelope; ideal pitch length 530 mm. Re-run path solver after dimensional change. Rubber density provisional.')\n # Lighten the purchased idler envelope with an annular pocket, keeping rim, hub and web.\n ss=sk(hc,'AZN_C5_idler_pocket_sk','Y','-belt_w/2')\n circle(ss,'idler_x_trial','L_thigh/2','idler_D_trial-6 mm');circle(ss,'idler_x_trial','L_thigh/2','12 mm')\n extrude(hc,ss,'AZN_C5_idler_pocket','belt_w-3 mm',cut=[next(bd for bd in hc.bRepBodies if bd.name=='AZN_C3_idler_envelope')])\n print(json.dumps({'pitch_path_mm':L,'idler_x_mm':x,'small_wrap_deg':sa*180/math.pi,'small_teeth':20*sa/(2*math.pi),'profile_count':s.profiles.count}))\n D.computeAll()\n",
+    "beltfix2": "\nimport math,json\nr=20*5/(2*math.pi);b=30*5/(2*math.pi);q=22.5+1.905;C=200\ndef calc(x):\n def norm(dx,dy,k):\n  d=math.hypot(dx,dy);a=math.atan2(dy,dx);t=math.acos(k/d)\n  v=[(math.cos(a-t),math.sin(a-t)),(math.cos(a+t),math.sin(a+t))]\n  return max(v,key=lambda z:z[0])\n ns=norm(x,100,r+q);nb=norm(x,-100,b+q);nl=(-math.sqrt(1-((b-r)/C)**2),-(b-r)/C)\n a=lambda n:math.atan2(n[1],n[0])\n sa=(a(ns)-a(nl))%(2*math.pi);ba=(a(nl)-a(nb))%(2*math.pi);ia=(a(ns)-a(nb))%(2*math.pi)\n L=math.sqrt(x*x+10000-(r+q)**2)+math.sqrt(x*x+10000-(b+q)**2)+math.sqrt(C*C-(b-r)**2)+r*sa+b*ba+q*ia\n return L,ns,nb,nl,sa,ba,ia\n\n\ndef run(_context:str):\n global r,b,q,C\n r=ev('pd_s')*10/2;b=ev('pd_l')*10/2;C=ev('L_thigh')*10;q=ev('idler_D_trial')*10/2+ev('belt_envelope_t_trial')*10/2\n lo,hi=20.,25.\n for _ in range(50):\n  mid=(lo+hi)/2\n  if calc(mid)[0]>ev('belt_L')*10:lo=mid\n  else:hi=mid\n x=(lo+hi)/2\n param('idler_x_trial',str(x)+' mm',comment='530 mm pitch path, back idler radius + half envelope thickness; re-solve if belt parameters change')\n hc=occ('FL_hip_link').component\n # Supersede just the old reference extrusion.\n old=hc.features.extrudeFeatures.itemByName('AZN_C5_GT3_530_belt_envelope')\n if old:old.deleteMe()\n L,ns,nb,nl,sa,ba,ia=calc(x)\n s=sk(hc,'AZN_C5_GT3_530_path_v2_sk','Y','-belt_w/2')\n def pt(x,y):return point(str(x)+' mm',str(y)+' mm')\n def pos(cx,cy,rad,n):return pt(cx+rad*n[0],cy+rad*n[1])\n def arc(cx,cy,rad,n,ang):\n  return s.sketchCurves.sketchArcs.addByCenterStartSweep(pt(cx,cy),pos(cx,cy,rad,n),ang)\n half=ev('belt_envelope_t_trial')*10/2\n for delta in [-half,half]:\n  rs=r+delta;rb=b+delta;ri=q-delta\n  a1=arc(0,0,rs,nl,sa)\n  a2=arc(x,100,ri,(-ns[0],-ns[1]),-ia)\n  a3=arc(0,C,rb,nb,ba)\n  s.sketchCurves.sketchLines.addByTwoPoints(a1.endSketchPoint,a2.endSketchPoint)\n  s.sketchCurves.sketchLines.addByTwoPoints(a2.startSketchPoint,a3.startSketchPoint)\n  s.sketchCurves.sketchLines.addByTwoPoints(a3.endSketchPoint,a1.startSketchPoint)\n f=extrude(hc,s,'AZN_C5_GT3_530_belt_envelope','belt_w','Rubber')\n f.bodies.item(0).attributes.add('AZN','HOLD','Smooth tooth-mesh envelope; ideal pitch length 530 mm. Re-run path solver after dimensional change. Rubber density provisional.')\n\n D.computeAll()\n print(json.dumps({'pitch_path_mm':L,'profiles':[{'loops':p.profileLoops.count,'area_cm2':p.areaProperties().area} for p in s.profiles]}))\n",
+    "details": "def run(_context:str):\n hc=occ('FL_hip_link').component;ac=occ('FL_abad_link').component\n param('output_phase_trial','29.619538694349 deg','deg','Standard STEP hole centers, zero x in X/down sketch coordinates')\n spacer=ring(hc,'AZN_C5_hip_output_spacer','0 mm','0 mm','y_hipmot+act_mount_L-leg_y','pilot_D','drive_shaft_D_trial','pin_H+clearance_trial')\n holes=[]\n for i in range(6):\n  ang='output_phase_trial+'+str(i*60)+' deg'\n  holes.append(('flange_BC/2*cos('+ang+')','flange_BC/2*sin('+ang+')','clr_M3'))\n # Pin phase is offset 30 degrees from the six-hole pattern; spacer clearance only.\n for i in range(3):\n  ang='output_phase_trial+30 deg+'+str(i*120)+' deg'\n  holes.append(('pin_PCD/2*cos('+ang+')','pin_PCD/2*sin('+ang+')','clr_M4'))\n cutcircles(hc,'AZN_C5_hip_output_holes','y_hipmot+act_mount_L-leg_y','pin_H+clearance_trial+plate_t',holes,[spacer,next(b for b in hc.bRepBodies if b.name=='AZN_C3_inner_plate')])\n # Sheet-metal folded adapter envelope, clear of the abduction output pins.\n param('abad_adapter_x_trial','143.5 mm+pin_H+clearance_trial')\n box(ac,'AZN_C5_abad_vertical','abad_adapter_x_trial','abad_y-bracket_W_trial/2','0 mm','plate_t','bracket_W_trial','bracket_top_trial+plate_t')\n box(ac,'AZN_C5_abad_top','abad_adapter_x_trial','abad_y-bracket_W_trial/2','bracket_top_trial','hip_spacing/2+bracket_W_trial/2-abad_adapter_x_trial','bracket_W_trial','plate_t')\n # Round-ended slot: end caps supplement the existing rectangular opening.\n cutcircles(hc,'AZN_C5_slot_endcaps','hip_outer_y_trial+plate_t','plate_t',[\n ('25 mm-idler_slot_L_trial/2','L_thigh/2','idler_pin_D_trial'),\n ('25 mm+idler_slot_L_trial/2','L_thigh/2','idler_pin_D_trial')],[next(b for b in hc.bRepBodies if b.name=='AZN_C3_idler_bracket')])\n ring(hc,'AZN_C5_idler_pin','idler_x_trial','L_thigh/2','-belt_w/2','idler_pin_D_trial',None,'hip_outer_y_trial+2*plate_t+belt_w/2','Steel')\n D.computeAll()\n print(json.dumps({'created':'hip six-bolt spacer, folded abad support, rounded slot, idler pin','HOLD':'abad output bolt adapter detail; rotating motor output not articulated in STEP'}))\n",
+    "details2": "def run(_context:str):\n hc=occ('FL_hip_link').component;ac=occ('FL_abad_link').component\n param('output_phase_trial','29.619538694349 deg','deg','Standard STEP hole centers, zero x in X/down sketch coordinates')\n spacer=ring(hc,'AZN_C5_hip_output_spacer','0 mm','0 mm','y_hipmot+act_mount_L-leg_y','pilot_D','drive_shaft_D_trial','pin_H+clearance_trial')\n holes=[]\n for i in range(6):\n  ang='output_phase_trial+'+str(i*60)+' deg'\n  holes.append(('flange_BC/2*cos('+ang+')','flange_BC/2*sin('+ang+')','clr_M3'))\n # Pin phase is offset 30 degrees from the six-hole pattern; spacer clearance only.\n for i in range(3):\n  ang='output_phase_trial+30 deg+'+str(i*120)+' deg'\n  holes.append(('pin_PCD/2*cos('+ang+')','pin_PCD/2*sin('+ang+')','clr_M4'))\n cutcircles(hc,'AZN_C5_hip_output_holes','y_hipmot+act_mount_L-leg_y','pin_H+clearance_trial+plate_t',holes,[spacer,next(b for b in hc.bRepBodies if b.name=='AZN_C3_inner_plate')])\n # Sheet-metal folded adapter envelope, clear of the abduction output pins.\n param('abad_adapter_x_trial','143.5 mm+pin_H+clearance_trial')\n box(ac,'AZN_C5_abad_vertical','abad_adapter_x_trial','abad_y-bracket_W_trial/2','0 mm','plate_t','bracket_W_trial','bracket_top_trial+plate_t')\n box(ac,'AZN_C5_abad_top','abad_adapter_x_trial','abad_y-bracket_W_trial/2','bracket_top_trial','hip_spacing/2+bracket_W_trial/2-abad_adapter_x_trial','bracket_W_trial','plate_t')\n # Round-ended slot: end caps supplement the existing rectangular opening.\n ring(hc,'AZN_C5_idler_pin','idler_x_trial','L_thigh/2','-belt_w/2','idler_pin_D_trial',None,'hip_outer_y_trial+2*plate_t+belt_w/2','Steel')\n D.computeAll()\n print(json.dumps({'created':'hip six-bolt spacer, folded abad support, rounded slot, idler pin','HOLD':'abad output bolt adapter detail; rotating motor output not articulated in STEP'}))\n",
+    "fix3": "def run(_context:str):\n ac=occ('FL_abad_link').component;hc=occ('FL_hip_link').component;kc=occ('FL_knee_link').component\n def bd(c,n):return next(b for b in c.bRepBodies if b.name==n)\n merge(ac,bd(ac,'AZN_C2_top_bridge'),[bd(ac,'AZN_C5_abad_vertical'),bd(ac,'AZN_C5_abad_top')],'AZN_C5_folded_frame_union')\n param('cross_W_trial','6 mm')\n for label in ['upper','lower']:\n  s=hc.sketches.itemByName('AZN_C3_cross_'+label+'_sk')\n  for dd in s.sketchDimensions:\n   if 'hip_plate_W_trial' in dd.parameter.expression:dd.parameter.expression=dd.parameter.expression.replace('hip_plate_W_trial','cross_W_trial')\n param('hip_inner_y_trial','y_hipmot+act_mount_L+pin_H+clearance_trial-leg_y-belt_side_clearance')\n hc.features.extrudeFeatures.itemByName('AZN_C5_hip_output_spacer').extentOne.distance.expression='pin_H+clearance_trial-belt_side_clearance'\n for c,prefix,x,down,y,od,ident in [\n (ac,'20T','hip_spacing/2','0 mm','y_belt','pd_s+3 mm','drive_shaft_D_trial'),\n (kc,'30T','0 mm','0 mm','0 mm','pd_l+3 mm','knee_brg_ID_trial')]:\n  for side,yy in [('inner',y+'-belt_w/2-pulley_flange_t_trial'),('outer',y+'+belt_w/2')]:\n   ring(c,'AZN_C5_'+prefix+'_flange_'+side,x,down,yy,od,ident,'pulley_flange_t_trial')\n # Round both ends of the idler slot with separate sketches to avoid inferred overconstraints.\n for side,x in [('left','25 mm-idler_slot_L_trial/2'),('right','25 mm+idler_slot_L_trial/2')]:\n  cutcircles(hc,'AZN_C5_slot_'+side,'hip_outer_y_trial+plate_t','plate_t',[(x,'L_thigh/2','idler_pin_D_trial')],[bd(hc,'AZN_C3_idler_bracket')])\n D.computeAll();print(json.dumps({'status':'clearance and flanges updated'}))\n",
+    "abadadapter": "def run(_context:str):\n ac=occ('FL_abad_link').component\n param('abad_output_x_trial','143.5 mm',comment='B measured FL abduction output face X; revisit if motor placement changes')\n for name,x,t in [('spacer','abad_output_x_trial','pin_H+clearance_trial'),('disc','abad_adapter_x_trial','plate_t')]:\n  pi=ac.constructionPlanes.createInput();pi.setByOffset(ac.yZConstructionPlane,V(x));pl=ac.constructionPlanes.add(pi);pl.name='AZN_C5_abad_'+name+'_plane';pl.isLightBulbOn=False\n  s=ac.sketches.add(pl);s.name='AZN_C5_abad_'+name+'_sk'\n  # Derive sketch coordinates from its actual basis.\n  p=s.modelToSketchSpace(point(x,'abad_y','0 mm'))\n  if abs(p.x)>1e-7:cx='abad_y';cy='0 mm'\n  else:cx='0 mm';cy='abad_y'\n  if p.x<0:cx='-('+cx+')'\n  if p.y<0:cy='-('+cy+')'\n  circle(s,cx,cy,'pilot_D+6 mm' if name=='disc' else 'pilot_D')\n  circle(s,cx,cy,'drive_shaft_D_trial')\n  extrude(ac,s,'AZN_C5_abad_'+name,t)\n D.computeAll()\n print(json.dumps({'created':'abduction output adapter annuli','pending':'bolt hole pattern and retention qualification'}))\n",
+    "abadholes": "def run(_context:str):\n ac=occ('FL_abad_link').component\n pl=next(p for p in ac.constructionPlanes if p.name=='AZN_C5_abad_spacer_plane')\n s=ac.sketches.add(pl);s.name='AZN_C5_abad_mount_holes_sk'\n ctr=s.modelToSketchSpace(point('abad_output_x_trial','abad_y','0 mm'))\n cx='abad_y' if abs(ctr.x)>1e-7 else '0 mm';cy='abad_y' if abs(ctr.y)>1e-7 else '0 mm'\n if ctr.x<0:cx='-('+cx+')'\n if ctr.y<0:cy='-('+cy+')'\n groups={6:[],3:[]}\n for o in R.allOccurrences:\n  if not o.fullPathName.startswith('ACT_ref:2'):continue\n  for b in o.bRepBodies:\n   for f in b.faces:\n    g=adsk.core.Cylinder.cast(f.geometry)\n    if not g or abs(g.axis.x)<.999:continue\n    radius=math.hypot(g.origin.y*10-ev('abad_y')*10,g.origin.z*10)\n    n=6 if abs(radius-ev('flange_BC')*5)<.01 and abs(g.radius*20-2.459)<.01 else 3 if abs(radius-ev('pin_PCD')*5)<.01 and abs(g.radius*20-4)<.01 else 0\n    if n:\n     p=s.modelToSketchSpace(g.origin);groups[n].append(math.atan2(p.y-ctr.y,p.x-ctr.x))\n for n,angles in groups.items():\n  assert len(angles)>=n\n  name='abad_'+str(n)+'_phase_trial';param(name,str(min(angles)*180/math.pi)+' deg','deg','STEP cylinder-axis projection measured in YZ sketch')\n  for i in range(n):\n   theta=name+'+'+str(i*360/n)+' deg';pcd='flange_BC' if n==6 else 'pin_PCD'\n   circle(s,cx+'+'+pcd+'/2*cos('+theta+')',cy+'+'+pcd+'/2*sin('+theta+')','clr_M3' if n==6 else 'clr_M4')\n pc=adsk.core.ObjectCollection.create()\n for p in s.profiles:pc.add(p)\n ei=ac.features.extrudeFeatures.createInput(pc,OP.CutFeatureOperation);ei.setOneSideExtent(adsk.fusion.DistanceExtentDefinition.create(V('pin_H+clearance_trial+plate_t')),adsk.fusion.ExtentDirections.PositiveExtentDirection)\n ei.participantBodies=[b for b in ac.bRepBodies if b.name in ['AZN_C5_abad_spacer','AZN_C5_abad_disc']]\n ac.features.extrudeFeatures.add(ei).name='AZN_C5_abad_mount_holes';s.isLightBulbOn=False\n def bd(n):return next(b for b in ac.bRepBodies if b.name==n)\n merge(ac,bd('AZN_C2_top_bridge'),[bd('AZN_C5_abad_disc')],'AZN_C5_adapter_union')\n D.computeAll();print(json.dumps({'hole_counts':{str(k):len(v) for k,v in groups.items()}}))\n",
+    "shankfix": "def run(_context:str):\n kc=occ('FL_knee_link').component\n param('shank_y_trial','hip_outer_y_trial+knee_brg_W_trial+shank_B_trial/2',comment='Outboard shank to clear folded thigh and belt; knee and foot joint centers unchanged')\n for dd in kc.sketches.itemByName('AZN_C4_shank_box_sk').sketchDimensions:\n  e=dd.parameter.expression\n  if 'shank_B_trial / 2' in e or 'shank_B_trial/2' in e:\n   if 'abs' in e:dd.parameter.expression=e.replace('-shank_B_trial','shank_y_trial-shank_B_trial').replace('- shank_B_trial','shank_y_trial-shank_B_trial')\n s=kc.sketches.itemByName('AZN_C4_shank_crosshead_sk')\n for dd in s.sketchDimensions:\n  e=dd.parameter.expression\n  if 'abs' in e and 'shank_B_trial' in e:dd.parameter.expression='hip_outer_y_trial+knee_brg_W_trial'\n  elif 'shank_B_trial' in e:dd.parameter.expression='shank_B_trial'\n bottom=box(kc,'AZN_C5_foot_bridge','-shank_W_trial/2','0 mm','-L_shank+foot_H_trial/2','shank_W_trial','shank_y_trial+shank_B_trial/2','8 mm','PETG')\n body=next(b for b in kc.bRepBodies if b.name=='AZN_C4_shank_box')\n merge(kc,body,[bottom],'AZN_C5_foot_bridge_union')\n D.computeAll();print('outboard shank with unchanged knee/foot axis centers')\n",
+    "shanksignfix": "def run(_context:str):\n kc=occ('FL_knee_link').component\n for sn,indices,exprs in [('AZN_C4_shank_box_sk',[1,5],['shank_y_trial-shank_B_trial/2','shank_y_trial-shank_B_trial/2+shank_wall_trial']),('AZN_C4_shank_crosshead_sk',[1],['hip_outer_y_trial+knee_brg_W_trial'])]:\n  s=kc.sketches.itemByName(sn)\n  targets=[dd for dd in s.sketchDimensions if ('shank_y_trial' in dd.parameter.expression and 'abs' in dd.parameter.expression) or dd.parameter.expression=='hip_outer_y_trial + knee_brg_W_trial']\n  for dd in targets:dd.deleteMe()\n  for idx,ex in zip(indices,exprs):\n   p=s.sketchPoints.item(idx);delta=ev(ex)-p.geometry.y\n   assert p.move(adsk.core.Vector3D.create(0,delta,0))\n   dim=s.sketchDimensions.addDistanceDimension(s.originPoint,p,adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,p.geometry);dim.parameter.expression=ex\n D.computeAll()\n print('shank profile branches corrected to positive local Y')\n",
+    "shanksignfix2": "def run(_context:str):\n kc=occ('FL_knee_link').component\n for sn,indices,exprs in [('AZN_C4_shank_box_sk',[1,5],['shank_y_trial-shank_B_trial/2','shank_y_trial-shank_B_trial/2+shank_wall_trial']),('AZN_C4_shank_crosshead_sk',[1],['hip_outer_y_trial+knee_brg_W_trial'])]:\n  s=kc.sketches.itemByName(sn)\n  s.timelineObject.rollTo(False)\n  targets=[dd for dd in s.sketchDimensions if ('shank_y_trial' in dd.parameter.expression and 'abs' in dd.parameter.expression) or dd.parameter.expression=='hip_outer_y_trial + knee_brg_W_trial']\n  for dd in targets:dd.deleteMe()\n  for idx,ex in zip(indices,exprs):\n   p=s.sketchPoints.item(idx);delta=ev(ex)-p.geometry.y\n   assert p.move(adsk.core.Vector3D.create(0,delta,0))\n   dim=s.sketchDimensions.addDistanceDimension(s.originPoint,p,adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,p.geometry);dim.parameter.expression=ex\n D.timeline.moveToEnd()\n D.computeAll()\n print('shank profile branches corrected to positive local Y')\n",
+    "shanksignfix3": "def run(_context:str):\n kc=occ('FL_knee_link').component\n for sn,indices,exprs in [('AZN_C4_shank_box_sk',[1,5],['shank_y_trial-shank_B_trial/2','shank_y_trial-shank_B_trial/2+shank_wall_trial']),('AZN_C4_shank_crosshead_sk',[1],['hip_outer_y_trial+knee_brg_W_trial'])]:\n  D.timeline.moveToEnd()\n  s=kc.sketches.itemByName(sn)\n  s.timelineObject.rollTo(False)\n  targets=[dd for dd in s.sketchDimensions if ('shank_y_trial' in dd.parameter.expression and 'abs' in dd.parameter.expression) or dd.parameter.expression=='hip_outer_y_trial + knee_brg_W_trial']\n  for dd in targets:dd.deleteMe()\n  for idx,ex in zip(indices,exprs):\n   p=s.sketchPoints.item(idx);delta=ev(ex)-p.geometry.y\n   assert p.move(adsk.core.Vector3D.create(0,delta,0))\n   dim=s.sketchDimensions.addDistanceDimension(s.originPoint,p,adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,p.geometry);dim.parameter.expression=ex\n D.timeline.moveToEnd()\n D.computeAll()\n print('shank profile branches corrected to positive local Y')\n",
+    "c5actual": "def run(_context:str):\n results=[]\n col=adsk.core.ObjectCollection.create()\n for o in R.occurrences:\n  if o.component.name.startswith('FL_') or (o.component.name=='ACT_ref' and o.name!='ACT_ref:1'):col.add(o)\n aj=R.joints.itemByName('FL_abad_joint');hj=R.joints.itemByName('FL_hip_joint');kj=R.joints.itemByName('FL_knee_joint')\n poses=[('stand','0 deg','stand_hip_trial','stand_knee_trial'),('crouch','0 deg','60 deg','-120 deg'),('max_knee','0 deg','75 deg','-150 deg'),('extension','0 deg','0 deg','0 deg'),('abad_minus_trial','-20 deg','stand_hip_trial','stand_knee_trial'),('abad_plus_trial','20 deg','stand_hip_trial','stand_knee_trial'),('trot_trial','0 deg','35 deg','-90 deg')]\n for label,aa,ha,ka in poses:\n  for j,e in [(aj,aa),(hj,ha),(kj,ka)]:j.jointMotion.rotationValue=(D.userParameters.itemByName(e).value if D.userParameters.itemByName(e) else U.evaluateExpression(e,'deg'))\n  adsk.doEvents()\n  inp=D.createInterferenceInput(col);inp.areCoincidentFacesIncluded=False\n  res=D.analyzeInterference(inp)\n  pairs=[{'a':i.entityOne.name,'b':i.entityTwo.name,'mm3':i.interferenceBody.volume*1000} for i in res]\n  pts=[]\n  for name,xyz in [('FL_hip_link',['0 mm','0 mm','0 mm']),('FL_knee_link',['0 mm','0 mm','0 mm']),('FL_foot',['0 mm','0 mm','0 mm'])]:\n   o=occ(name);p=point(*xyz);p.transformBy(o.transform2);pts.append([p.x*10,p.y*10,p.z*10])\n  results.append({'pose':label,'angles_deg':[j.jointMotion.rotationValue*180/math.pi for j in [aj,hj,kj]],'hip_knee_foot_mm':pts,'pairs':pairs})\n for j,e in [(aj,'0 deg'),(hj,'stand_hip_trial'),(kj,'stand_knee_trial')]:j.jointMotion.rotationValue=(D.userParameters.itemByName(e).value if D.userParameters.itemByName(e) else U.evaluateExpression(e,'deg'))\n adsk.doEvents()\n masses=[]\n for o in R.occurrences:\n  if not o.component.name.startswith('FL_'):continue\n  entries=[{'body':b.name,'material':b.material.name,'mass_g':b.physicalProperties.mass*1000,'volume_cm3':b.volume} for b in o.component.bRepBodies]\n  masses.append({'component':o.component.name,'mass_g':sum(e['mass_g'] for e in entries),'bodies':entries})\n issues=[{'name':t.name,'state':int(t.healthState),'message':t.errorOrWarningMessage} for t in D.timeline if t.healthState!=adsk.fusion.FeatureHealthStates.HealthyFeatureHealthState]\n print(json.dumps({'poses':results,'masses':masses,'timeline_issues':issues,'params':[{'name':p.name,'expression':p.expression,'value':p.value,'unit':p.unit} for p in D.userParameters]}))\n",
+    "sfread": "import adsk.core, adsk.fusion, json, math\nA=adsk.core.Application.get()\nD=adsk.fusion.Design.cast(A.activeProduct)\nR=D.rootComponent\nU=D.unitsManager\nV=adsk.core.ValueInput.createByString\nP=adsk.core.Point3D.create\nOP=adsk.fusion.FeatureOperations\ndef ev(expr):\n    return U.evaluateExpression(str(expr),'mm')\ndef point(x,y,z='0 mm'):\n    return P(ev(x),ev(y),ev(z))\ndef param(n,e,unit='mm',comment='[Autonomous C2-C5] provisional detail; fabrication validation HOLD'):\n    p=D.userParameters.itemByName(n)\n    if p: p.expression=e\n    else: p=D.userParameters.add(n,V(e),unit,comment)\n    return p\ndef occ(n):\n    found=[o for o in R.occurrences if o.component.name==n]\n    if found: return found[0]\n    o=R.occurrences.addNewComponent(adsk.core.Matrix3D.create()); o.component.name=n; return o\ndef material(key):\n    lib=A.materialLibraries.itemById('C1EEA57C-3F56-45FC-B8CB-A9EC46A9994C')\n    if key=='Al': return lib.materials.itemById('PrismMaterial-160')\n    if key=='Steel': return lib.materials.itemById('PrismMaterial-018')\n    if key=='Rubber': return lib.materials.itemById('PrismMaterial-059')\n    name='AZN_'+key+'_TDS_density'\n    m=D.materials.itemByName(name)\n    if not m:\n        m=D.materials.addByCopy(lib.materials.itemById('PrismMaterial-279' if key=='PETG' else 'PrismMaterial-059'),name)\n        for prop in m.materialProperties:\n            if 'Density' in prop.id and prop.objectType.endswith('FloatProperty'):\n                prop.value=1250.0 if key=='PETG' else 1220.0\n            if prop.id.startswith('structural_Young_modulus'):\n                prop.value=2780000.0 if key=='PETG' else 9800.0\n            if prop.id=='structural_Minimum_tensile_strength':\n                prop.value=51000.0 if key=='PETG' else 27300.0\n    return m\ndef plane(c,name,axis,offset):\n    existing=next((p for p in c.constructionPlanes if p.name==name),None)\n    if existing: return existing\n    pi=c.constructionPlanes.createInput()\n    base=c.xZConstructionPlane if axis=='Y' else c.xYConstructionPlane\n    pi.setByOffset(base,V(offset))\n    pl=c.constructionPlanes.add(pi); pl.name=name; pl.isLightBulbOn=False; return pl\ndef sk(c,name,axis,offset):\n    s=next((s for s in c.sketches if s.name==name),None)\n    if s: return s\n    s=c.sketches.add(plane(c,name+'_plane',axis,offset)); s.name=name\n    return s\ndef anchor(s,p,x,y):\n    # Coordinates are signed by seed geometry, driving lengths remain positive.\n    for coord,expr,orientation in [(p.geometry.x,x,adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation),(p.geometry.y,y,adsk.fusion.DimensionOrientations.VerticalDimensionOrientation)]:\n        if abs(coord)<1e-8:\n            if orientation==adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation:\n                s.geometricConstraints.addVerticalPoints(s.originPoint,p)\n            else: s.geometricConstraints.addHorizontalPoints(s.originPoint,p)\n        else:\n            dim=s.sketchDimensions.addDistanceDimension(s.originPoint,p,orientation,p.geometry)\n            dim.parameter.expression='abs('+expr+')'\ndef circle(s,x,z,dia):\n    p=point(x,z)\n    prior=next((q for q in s.sketchCurves.sketchCircles if q.centerSketchPoint.geometry.distanceTo(p)<1e-7),None)\n    c=s.sketchCurves.sketchCircles.addByCenterRadius(p,ev(dia)/2)\n    txt=point('('+x+')+('+dia+')','('+z+')+('+dia+')')\n    s.sketchDimensions.addDiameterDimension(c,txt).parameter.expression=dia\n    if prior:\n        if c.centerSketchPoint != prior.centerSketchPoint:\n            s.geometricConstraints.addConcentric(c,prior)\n    elif abs(p.x)+abs(p.y)<1e-8:\n        if c.centerSketchPoint != s.originPoint:\n            s.geometricConstraints.addCoincident(c.centerSketchPoint,s.originPoint)\n    else: anchor(s,c.centerSketchPoint,x,z)\n    return c\ndef rect(s,x,z,w,h):\n    lines=s.sketchCurves.sketchLines.addTwoPointRectangle(point(x,z),point('('+x+')+('+w+')','('+z+')+('+h+')'))\n    for i in [0,2]: s.geometricConstraints.addHorizontal(lines.item(i))\n    for i in [1,3]: s.geometricConstraints.addVertical(lines.item(i))\n    anchor(s,lines.item(0).startSketchPoint,x,z)\n    for i,expr in [(0,w),(1,h)]:\n        ln=lines.item(i)\n        s.sketchDimensions.addDistanceDimension(ln.startSketchPoint,ln.endSketchPoint,adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,ln.startSketchPoint.geometry).parameter.expression=expr\n    return lines\ndef extrude(c,s,name,t,key='Al',cut=None):\n    profiles=adsk.core.ObjectCollection.create()\n    # For nested circles/rectangles choose only outer material regions.\n    candidates=[p for p in s.profiles]\n    if len(candidates)>1:\n        target=max(candidates,key=lambda p:(p.profileLoops.count,p.areaProperties().area))\n        profiles.add(target)\n    else:\n        for p in candidates: profiles.add(p)\n    ei=c.features.extrudeFeatures.createInput(profiles,OP.CutFeatureOperation if cut else OP.NewBodyFeatureOperation)\n    ei.setOneSideExtent(adsk.fusion.DistanceExtentDefinition.create(V(t)),adsk.fusion.ExtentDirections.NegativeExtentDirection if abs(s.transform.getCell(1,2)+1)<1e-7 else adsk.fusion.ExtentDirections.PositiveExtentDirection)\n    if cut: ei.participantBodies=cut\n    f=c.features.extrudeFeatures.add(ei); f.name=name\n    if not cut:\n        for b in f.bodies: b.name=name; b.material=material(key)\n    s.isLightBulbOn=False\n    return f\ndef ring(c,name,x,z,y,od,ident,t,key='Al'):\n    b=next((b for b in c.bRepBodies if b.name==name),None)\n    if b:return b\n    s=sk(c,name+'_sk','Y',y); circle(s,x,z,od)\n    if ident:circle(s,x,z,ident)\n    return extrude(c,s,name,t,key).bodies.item(0)\ndef box(c,name,x,y,z,w,depth,height,key='Al'):\n    b=next((b for b in c.bRepBodies if b.name==name),None)\n    if b:return b\n    s=sk(c,name+'_sk','Z',z); rect(s,x,y,w,depth)\n    return extrude(c,s,name,height,key).bodies.item(0)\ndef jo(c,name,x,y,z):\n    old=c.jointOrigins.itemByName(name)\n    if old:return old\n    j=c.jointOrigins.createInput(adsk.fusion.JointGeometry.createByPoint(c.originConstructionPoint))\n    j.offsetX=V(x);j.offsetY=V(y);j.offsetZ=V(z)\n    result=c.jointOrigins.add(j);result.name=name;return result\ndef joint(name,moving,source,target,targetorigin,revolute=True):\n    old=R.joints.itemByName(name)\n    if old:return old\n    p=source.createForAssemblyContext(moving); q=targetorigin.createForAssemblyContext(target)\n    assert p.assemblyContext.name==moving.name and q.assemblyContext.name==target.name\n    ji=R.joints.createInput(p,q)\n    if revolute:ji.setAsRevoluteJointMotion(adsk.fusion.JointDirections.YAxisJointDirection)\n    else:ji.setAsRigidJointMotion()\n    ji.isFlipped=False\n    j=R.joints.add(ji); j.name=name\n    print(json.dumps({'joint':name,'one':j.occurrenceOne.name,'two':j.occurrenceTwo.name}))\n    return j\ndef cutcircles(c,name,y,t,holes,bodies):\n    if any(f.name==name for f in c.features.extrudeFeatures):return\n    s=sk(c,name+'_sk','Y',y)\n    for x,z,dia in holes:circle(s,x,z,dia)\n    pc=adsk.core.ObjectCollection.create()\n    for p in s.profiles: pc.add(p)\n    ei=c.features.extrudeFeatures.createInput(pc,OP.CutFeatureOperation)\n    ei.setOneSideExtent(adsk.fusion.DistanceExtentDefinition.create(V(t)),adsk.fusion.ExtentDirections.PositiveExtentDirection)\n    ei.participantBodies=bodies\n    f=c.features.extrudeFeatures.add(ei);f.name=name;s.isLightBulbOn=False\n    return f\n\n\r\n\ndef merge(c,base,others,name):\n coll=adsk.core.ObjectCollection.create()\n for b in others:coll.add(b)\n ci=c.features.combineFeatures.createInput(base,coll);ci.operation=OP.JoinFeatureOperation\n f=c.features.combineFeatures.add(ci);f.name=name\n return base\n\ndef run(_context:str):\n c=occ('FL_abad_link').component;s=c.sketches.itemByName('AZN_C5_abad_vertical_sk')\n edges=[ln.length*10 for ln in s.sketchCurves.sketchLines]\n m=next(b for b in c.bRepBodies if b.name=='AZN_C2_top_bridge').material\n props=[{'id':p.id,'value':p.value,'units':getattr(p,'units','')} for p in m.materialProperties if 'Yield' in p.id or 'yield' in p.id]\n print(json.dumps({'vertical_section_edges_mm':edges,'material':m.name,'yield_properties':props,'vertical_plane_z_mm':s.transform.translation.z*10,'foot_world_mm':[v*10 for v in occ('FL_foot').transform2.translation.asArray()]}))\n"
+  },
+  "results": {
+    "c2res": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"stage\\\": \\\"C2\\\", \\\"bodies\\\": [\\\"AZN_C2_hip_mount_plate\\\", \\\"AZN_C2_knee_mount_plate\\\", \\\"AZN_C2_spindle_flange\\\", \\\"AZN_C2_fixed_spindle\\\", \\\"AZN_C2_top_bridge\\\", \\\"AZN_C2_riser_hip\\\", \\\"AZN_C2_riser_knee\\\"], \\\"parameters\\\": 72}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "c3res": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"joint\\\": \\\"FL_hip_joint\\\", \\\"one\\\": \\\"FL_hip_link:1\\\", \\\"two\\\": \\\"FL_abad_link:1\\\"}\\n{\\\"stage\\\": \\\"C3\\\", \\\"bodies\\\": 8, \\\"joint\\\": 0}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "c3beltres": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"stage\\\": \\\"C3_belt_idler\\\", \\\"beltReferenceVolume_cm3\\\": 30.68076693252806, \\\"hold\\\": \\\"pitch path and tooth form verification\\\"}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "c4res": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"joint\\\": \\\"FL_knee_joint\\\", \\\"one\\\": \\\"FL_knee_link:1\\\", \\\"two\\\": \\\"FL_hip_link:1\\\"}\\n{\\\"joint\\\": \\\"AZN_C4_foot_fixed\\\", \\\"one\\\": \\\"FL_foot:1\\\", \\\"two\\\": \\\"FL_knee_link:1\\\"}\\n{\\\"stage\\\": \\\"C4\\\", \\\"kneeBodies\\\": 6, \\\"footBodies\\\": 1}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "inspectres": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"[{\\\"occ\\\": \\\"FL_abad_link:1\\\", \\\"bodies\\\": [{\\\"name\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"g\\\": 40.716548754999124}, {\\\"name\\\": \\\"AZN_C2_knee_mount_plate\\\", \\\"g\\\": 40.71654875499926}, {\\\"name\\\": \\\"AZN_C2_spindle_flange\\\", \\\"g\\\": 24.470375687618244}, {\\\"name\\\": \\\"AZN_C2_fixed_spindle\\\", \\\"g\\\": 19.8093517471194}, {\\\"name\\\": \\\"AZN_C2_top_bridge\\\", \\\"g\\\": 18.138240000000007}, {\\\"name\\\": \\\"AZN_C2_riser_hip\\\", \\\"g\\\": 1.5436800000000017}, {\\\"name\\\": \\\"AZN_C2_riser_knee\\\", \\\"g\\\": 1.5436800000000064}, {\\\"name\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"g\\\": 25.193262952013587}, {\\\"name\\\": \\\"AZN_C3_drive_shaft\\\", \\\"g\\\": 26.634422517135576}, {\\\"name\\\": \\\"AZN_C3_6801_a\\\", \\\"g\\\": 9.155582740265292}, {\\\"name\\\": \\\"AZN_C3_6801_b\\\", \\\"g\\\": 9.155582740265292}]}, {\\\"occ\\\": \\\"FL_hip_link:1\\\", \\\"bodies\\\": [{\\\"name\\\": \\\"AZN_C3_inner_plate\\\", \\\"g\\\": 59.41445588594917}, {\\\"name\\\": \\\"AZN_C3_outer_plate\\\", \\\"g\\\": 49.184801887330515}, {\\\"name\\\": \\\"AZN_C3_6806\\\", \\\"g\\\": 37.28819152398959}, {\\\"name\\\": \\\"AZN_C3_6806_seat\\\", \\\"g\\\": 9.699227494987401}, {\\\"name\\\": \\\"AZN_C3_retainer_inner\\\", \\\"g\\\": 3.0983643386765305}, {\\\"name\\\": \\\"AZN_C3_retainer_outer\\\", \\\"g\\\": 3.0983643386765336}, {\\\"name\\\": \\\"AZN_C3_cross_upper\\\", \\\"g\\\": 3.7144799999999956}, {\\\"name\\\": \\\"AZN_C3_cross_lower\\\", \\\"g\\\": 3.7144800000000067}, {\\\"name\\\": \\\"AZN_C3_GT3_belt_reference\\\", \\\"g\\\": 28.533113247251094}, {\\\"name\\\": \\\"AZN_C3_idler_bracket\\\", \\\"g\\\": 3.3768000000000007}, {\\\"name\\\": \\\"AZN_C3_idler_envelope\\\", \\\"g\\\": 63.146012337157536}, {\\\"name\\\": \\\"AZN_C4_6001_inner\\\", \\\"g\\\": 31.566722983271596}, {\\\"name\\\": \\\"AZN_C4_6001_outer\\\", \\\"g\\\": 31.566722983271596}]}, {\\\"occ\\\": \\\"FL_knee_link:1\\\", \\\"bodies\\\": [{\\\"name\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"g\\\": 64.03524240385399}, {\\\"name\\\": \\\"AZN_C4_knee_shaft\\\", \\\"g\\\": 35.956470398132794}, {\\\"name\\\": \\\"AZN_C4_shank_hub\\\", \\\"g\\\": 14.07433508808288}, {\\\"name\\\": \\\"AZN_C4_shank_box\\\", \\\"g\\\": 54.45}, {\\\"name\\\": \\\"AZN_C4_shank_neck\\\", \\\"g\\\": 8.4}, {\\\"name\\\": \\\"AZN_C4_shank_crosshead\\\", \\\"g\\\": 10.08}]}, {\\\"occ\\\": \\\"FL_foot:1\\\", \\\"bodies\\\": [{\\\"name\\\": \\\"AZN_C4_TPU_pad\\\", \\\"g\\\": 13.797874934566963}]}]\\n[{\\\"a\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_riser_hip\\\", \\\"mm3\\\": 248.27702664814288}, {\\\"a\\\": \\\"AZN_C2_knee_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_spindle_flange\\\", \\\"mm3\\\": 1102.6990214100701}, {\\\"a\\\": \\\"AZN_C2_knee_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_riser_knee\\\", \\\"mm3\\\": 248.27702664814362}, {\\\"a\\\": \\\"AZN_C2_knee_mount_plate\\\", \\\"b\\\": \\\"AZN_C3_retainer_outer\\\", \\\"mm3\\\": 1156.1060965210904}, {\\\"a\\\": \\\"AZN_C2_spindle_flange\\\", \\\"b\\\": \\\"AZN_C3_retainer_outer\\\", \\\"mm3\\\": 251.32741228719513}, {\\\"a\\\": \\\"AZN_C3_cross_lower\\\", \\\"b\\\": \\\"AZN_C3_idler_envelope\\\", \\\"mm3\\\": 79.01792260785564}, {\\\"a\\\": \\\"AZN_C4_shank_hub\\\", \\\"b\\\": \\\"AZN_C4_shank_neck\\\", \\\"mm3\\\": 2331.511830870894}, {\\\"a\\\": \\\"AZN_C4_shank_box\\\", \\\"b\\\": \\\"AZN_C4_shank_crosshead\\\", \\\"mm3\\\": 2111.9999999999895}, {\\\"a\\\": \\\"AZN_C4_shank_box\\\", \\\"b\\\": \\\"AZN_C4_TPU_pad\\\", \\\"mm3\\\": 685.0297609603881}, {\\\"a\\\": \\\"AZN_C4_shank_neck\\\", \\\"b\\\": \\\"AZN_C4_shank_crosshead\\\", \\\"mm3\\\": 1792.0000000000014}]\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "poseres": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"[{\\\"pose\\\": \\\"stand\\\", \\\"pairs\\\": []}, {\\\"pose\\\": \\\"crouch\\\", \\\"pairs\\\": []}]\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "allposesres": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"[{\\\"pose\\\": \\\"stand\\\", \\\"pairs\\\": []}, {\\\"pose\\\": \\\"crouch\\\", \\\"pairs\\\": []}, {\\\"pose\\\": \\\"max_knee\\\", \\\"pairs\\\": []}, {\\\"pose\\\": \\\"extension\\\", \\\"pairs\\\": []}, {\\\"pose\\\": \\\"trot_trial\\\", \\\"pairs\\\": []}]\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "beltfixres": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"pitch_path_mm\\\": 530.0, \\\"idler_x_mm\\\": 22.913529873909926, \\\"small_wrap_deg\\\": 187.95648735007433, \\\"small_teeth\\\": 10.442027075004129, \\\"profile_count\\\": 4}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "allposesres2": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"[{\\\"pose\\\": \\\"stand\\\", \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_top_bridge\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 863.9999999999977}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_abad_vertical\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 215.99999999999915}, {\\\"a\\\": \\\"AZN_C3_cross_upper\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 174.22335401404462}, {\\\"a\\\": \\\"AZN_C3_cross_lower\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 177.63733260225573}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"crouch\\\", \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_top_bridge\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 863.9999999999977}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_abad_vertical\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 215.99999999999915}, {\\\"a\\\": \\\"AZN_C3_cross_upper\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 174.22335401404462}, {\\\"a\\\": \\\"AZN_C3_cross_lower\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 177.63733260225573}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"max_knee\\\", \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_top_bridge\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 863.9999999999977}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_abad_vertical\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 215.99999999999915}, {\\\"a\\\": \\\"AZN_C3_cross_upper\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 174.22335401404462}, {\\\"a\\\": \\\"AZN_C3_cross_lower\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 177.63733260225573}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"extension\\\", \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_top_bridge\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 863.9999999999977}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_abad_vertical\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 215.99999999999915}, {\\\"a\\\": \\\"AZN_C3_cross_upper\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 174.22335401404462}, {\\\"a\\\": \\\"AZN_C3_cross_lower\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 177.63733260225573}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"trot_trial\\\", \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_top_bridge\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 863.9999999999977}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_abad_vertical\\\", \\\"b\\\": \\\"AZN_C5_abad_top\\\", \\\"mm3\\\": 215.99999999999915}, {\\\"a\\\": \\\"AZN_C3_cross_upper\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 174.22335401404462}, {\\\"a\\\": \\\"AZN_C3_cross_lower\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 177.63733260225573}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}]\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "c5finalres": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"poses\\\": [{\\\"pose\\\": \\\"stand\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [190.0, 120.0, -200.0], [190.0, 120.0, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_top_bridge\\\", \\\"mm3\\\": 128.45489818059633}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"crouch\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [190.0, 120.0, -200.0], [190.0, 120.0, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_top_bridge\\\", \\\"mm3\\\": 128.45489818059633}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"max_knee\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [190.0, 120.0, -200.0], [190.0, 120.0, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_top_bridge\\\", \\\"mm3\\\": 128.45489818059633}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"extension\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [190.0, 120.0, -200.0], [190.0, 120.0, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_top_bridge\\\", \\\"mm3\\\": 128.45489818059633}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"abad_minus_trial\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [190.0, 120.0, -200.0], [190.0, 120.0, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_top_bridge\\\", \\\"mm3\\\": 128.45489818059633}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"abad_plus_trial\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [190.0, 120.0, -200.0], [190.0, 120.0, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_top_bridge\\\", \\\"mm3\\\": 128.45489818059633}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}, {\\\"pose\\\": \\\"trot_trial\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [190.0, 120.0, -200.0], [190.0, 120.0, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"b\\\": \\\"AZN_C2_top_bridge\\\", \\\"mm3\\\": 128.45489818059633}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646098}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481828}]}], \\\"masses\\\": [{\\\"component\\\": \\\"FL_abad_link\\\", \\\"mass_g\\\": 235.8134114645122, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C2_hip_mount_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 41.5948463235798, \\\"volume_cm3\\\": 15.520465046111864}, {\\\"body\\\": \\\"AZN_C2_knee_mount_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 34.65825686834313, \\\"volume_cm3\\\": 12.932185398635497}, {\\\"body\\\": \\\"AZN_C2_spindle_flange\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 12.235187843809122, \\\"volume_cm3\\\": 1.5586226552623086}, {\\\"body\\\": \\\"AZN_C2_fixed_spindle\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 24.054212835787858, \\\"volume_cm3\\\": 3.0642309344952685}, {\\\"body\\\": \\\"AZN_C2_top_bridge\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 41.2059733701485, \\\"volume_cm3\\\": 15.375363197816604}, {\\\"body\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 25.193262952013587, \\\"volume_cm3\\\": 9.400471250751337}, {\\\"body\\\": \\\"AZN_C3_drive_shaft\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 26.634422517135576, \\\"volume_cm3\\\": 3.3929200658771435}, {\\\"body\\\": \\\"AZN_C3_6801_a\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 9.155582740265292, \\\"volume_cm3\\\": 1.1663162726452603}, {\\\"body\\\": \\\"AZN_C3_6801_b\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 9.155582740265292, \\\"volume_cm3\\\": 1.1663162726452603}, {\\\"body\\\": \\\"AZN_C5_20T_flange_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 2.250519181914293, \\\"volume_cm3\\\": 0.8397459634008556}, {\\\"body\\\": \\\"AZN_C5_20T_flange_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 2.250519181914293, \\\"volume_cm3\\\": 0.8397459634008556}, {\\\"body\\\": \\\"AZN_C5_abad_spacer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 7.425044909335461, \\\"volume_cm3\\\": 2.7705391452744257}]}, {\\\"component\\\": \\\"FL_hip_link\\\", \\\"mass_g\\\": 293.6939342142292, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C3_inner_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 58.59286311943049, \\\"volume_cm3\\\": 21.863008626653166}, {\\\"body\\\": \\\"AZN_C3_outer_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 49.184801887330515, \\\"volume_cm3\\\": 18.35253801766064}, {\\\"body\\\": \\\"AZN_C3_6806\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 37.28819152398959, \\\"volume_cm3\\\": 4.750088092227974}, {\\\"body\\\": \\\"AZN_C3_6806_seat\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 9.699227494987401, \\\"volume_cm3\\\": 3.6191147369355976}, {\\\"body\\\": \\\"AZN_C3_retainer_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.0983643386765305, \\\"volume_cm3\\\": 1.1561060965210934}, {\\\"body\\\": \\\"AZN_C3_retainer_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.0983643386765336, \\\"volume_cm3\\\": 1.1561060965210945}, {\\\"body\\\": \\\"AZN_C3_cross_upper\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 0.8683199999999989, \\\"volume_cm3\\\": 0.32399999999999957}, {\\\"body\\\": \\\"AZN_C3_cross_lower\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 0.8683200000000015, \\\"volume_cm3\\\": 0.32400000000000057}, {\\\"body\\\": \\\"AZN_C3_idler_bracket\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.2189349691571145, \\\"volume_cm3\\\": 1.201095137745192}, {\\\"body\\\": \\\"AZN_C3_idler_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 28.365188741851156, \\\"volume_cm3\\\": 10.584025649944461}, {\\\"body\\\": \\\"AZN_C4_6001_inner\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 31.566722983271596, \\\"volume_cm3\\\": 4.021238596595108}, {\\\"body\\\": \\\"AZN_C4_6001_outer\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 31.566722983271596, \\\"volume_cm3\\\": 4.021238596595108}, {\\\"body\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"material\\\": \\\"\\\\uace0\\\\ubb34\\\", \\\"mass_g\\\": 28.16923500000004, \\\"volume_cm3\\\": 30.289500000000043}, {\\\"body\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 4.640653068334657, \\\"volume_cm3\\\": 1.731586965796514}, {\\\"body\\\": \\\"AZN_C5_idler_pin\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 3.468023765252008, \\\"volume_cm3\\\": 0.44178646691108386}]}, {\\\"component\\\": \\\"FL_knee_link\\\", \\\"mass_g\\\": 189.7781081847445, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 64.03524240385399, \\\"volume_cm3\\\": 23.893747165617157}, {\\\"body\\\": \\\"AZN_C4_knee_shaft\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 37.288191523989575, \\\"volume_cm3\\\": 4.750088092227972}, {\\\"body\\\": \\\"AZN_C4_shank_box\\\", \\\"material\\\": \\\"AZN_PETG_TDS_density\\\", \\\"mass_g\\\": 78.21994529949362, \\\"volume_cm3\\\": 62.57595623959489}, {\\\"body\\\": \\\"AZN_C5_30T_flange_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 5.117364478703665, \\\"volume_cm3\\\": 1.9094643577252484}, {\\\"body\\\": \\\"AZN_C5_30T_flange_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 5.117364478703665, \\\"volume_cm3\\\": 1.9094643577252484}]}, {\\\"component\\\": \\\"FL_foot\\\", \\\"mass_g\\\": 13.797874934566963, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C4_TPU_pad\\\", \\\"material\\\": \\\"AZN_TPU_TDS_density\\\", \\\"mass_g\\\": 13.797874934566963, \\\"volume_cm3\\\": 11.30973355292374}]}], \\\"timeline_issues\\\": [{\\\"name\\\": \\\"\\\\uadf8\\\\ub8f91\\\", \\\"state\\\": 5, \\\"message\\\": \\\"\\\"}], \\\"params\\\": [{\\\"name\\\": \\\"L_thigh\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"L_shank\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_spacing\\\", \\\"expression\\\": \\\"380 mm\\\", \\\"value\\\": 38.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_W\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_L\\\", \\\"expression\\\": \\\"300 mm\\\", \\\"value\\\": 30.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_H\\\", \\\"expression\\\": \\\"100 mm\\\", \\\"value\\\": 10.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_y\\\", \\\"expression\\\": \\\"45 mm\\\", \\\"value\\\": 4.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_x\\\", \\\"expression\\\": \\\"125 mm\\\", \\\"value\\\": 12.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_offset\\\", \\\"expression\\\": \\\"75 mm\\\", \\\"value\\\": 7.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"leg_y\\\", \\\"expression\\\": \\\"abad_y + abad_offset\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_D\\\", \\\"expression\\\": \\\"80 mm\\\", \\\"value\\\": 8.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_L\\\", \\\"expression\\\": \\\"44 mm\\\", \\\"value\\\": 4.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"flange_BC\\\", \\\"expression\\\": \\\"25 mm\\\", \\\"value\\\": 2.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pilot_D\\\", \\\"expression\\\": \\\"34 mm\\\", \\\"value\\\": 3.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"htd_p\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"Ts_teeth\\\", \\\"expression\\\": \\\"20\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"Tl_teeth\\\", \\\"expression\\\": \\\"30\\\", \\\"value\\\": 30.0, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"pd_s\\\", \\\"expression\\\": \\\"Ts_teeth * htd_p / PI\\\", \\\"value\\\": 3.183098861837907, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pd_l\\\", \\\"expression\\\": \\\"Tl_teeth * htd_p / PI\\\", \\\"value\\\": 4.7746482927568605, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_ratio\\\", \\\"expression\\\": \\\"Tl_teeth / Ts_teeth\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"belt_C\\\", \\\"expression\\\": \\\"L_thigh\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_L\\\", \\\"expression\\\": \\\"530 mm\\\", \\\"value\\\": 53.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_w\\\", \\\"expression\\\": \\\"15 mm\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"stance_h\\\", \\\"expression\\\": \\\"280 mm\\\", \\\"value\\\": 28.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"crouch_h\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"foot_D\\\", \\\"expression\\\": \\\"30 mm\\\", \\\"value\\\": 3.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_OD\\\", \\\"expression\\\": \\\"42 mm\\\", \\\"value\\\": 4.2, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_ID\\\", \\\"expression\\\": \\\"30 mm\\\", \\\"value\\\": 3.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_W\\\", \\\"expression\\\": \\\"7 mm\\\", \\\"value\\\": 0.7000000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_hipmot\\\", \\\"expression\\\": \\\"65 mm\\\", \\\"value\\\": 6.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_belt\\\", \\\"expression\\\": \\\"leg_y\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_kneemot\\\", \\\"expression\\\": \\\"139 mm\\\", \\\"value\\\": 13.9, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"plate_t\\\", \\\"expression\\\": \\\"3 mm\\\", \\\"value\\\": 0.30000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"fit_brg\\\", \\\"expression\\\": \\\"0.10 mm\\\", \\\"value\\\": 0.010000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clr_M3\\\", \\\"expression\\\": \\\"3.4 mm\\\", \\\"value\\\": 0.34, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clr_M4\\\", \\\"expression\\\": \\\"4.5 mm\\\", \\\"value\\\": 0.45, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"housing_BC\\\", \\\"expression\\\": \\\"74 mm\\\", \\\"value\\\": 7.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_PCD\\\", \\\"expression\\\": \\\"20.4 mm\\\", \\\"value\\\": 2.04, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_D\\\", \\\"expression\\\": \\\"4 mm\\\", \\\"value\\\": 0.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_H\\\", \\\"expression\\\": \\\"3.5 mm\\\", \\\"value\\\": 0.35000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_mount_L\\\", \\\"expression\\\": \\\"40.5 mm\\\", \\\"value\\\": 4.05, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"output_boss_H\\\", \\\"expression\\\": \\\"1.5 mm\\\", \\\"value\\\": 0.15000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"output_face_offset\\\", \\\"expression\\\": \\\"3.5 mm\\\", \\\"value\\\": 0.35000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_ref_output_x\\\", \\\"expression\\\": \\\"29.5 mm\\\", \\\"value\\\": 2.95, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_w_trial\\\", \\\"expression\\\": \\\"belt_w\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_belt_trial\\\", \\\"expression\\\": \\\"y_belt\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_side_clearance\\\", \\\"expression\\\": \\\"1.5 mm\\\", \\\"value\\\": 0.15000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_support_trial\\\", \\\"expression\\\": \\\"y_belt + belt_w / 2 + belt_side_clearance + brg_W / 2\\\", \\\"value\\\": 13.25, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"drive_shaft_D_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_plate_W_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_end_D_trial\\\", \\\"expression\\\": \\\"54 mm\\\", \\\"value\\\": 5.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_end_D_trial\\\", \\\"expression\\\": \\\"44 mm\\\", \\\"value\\\": 4.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clearance_trial\\\", \\\"expression\\\": \\\"0.5 mm\\\", \\\"value\\\": 0.05, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_inner_y_trial\\\", \\\"expression\\\": \\\"y_hipmot + act_mount_L + pin_H + clearance_trial - leg_y - belt_side_clearance\\\", \\\"value\\\": -1.1999999999999988, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_outer_y_trial\\\", \\\"expression\\\": \\\"y_support_trial - leg_y - brg_W / 2\\\", \\\"value\\\": 0.8999999999999999, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_OD_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_ID_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_W_trial\\\", \\\"expression\\\": \\\"8 mm\\\", \\\"value\\\": 0.8, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shaft_brg_OD_trial\\\", \\\"expression\\\": \\\"21 mm\\\", \\\"value\\\": 2.1, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shaft_brg_W_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_W_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_B_trial\\\", \\\"expression\\\": \\\"22 mm\\\", \\\"value\\\": 2.2, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_wall_trial\\\", \\\"expression\\\": \\\"3 mm\\\", \\\"value\\\": 0.30000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_flange_t_trial\\\", \\\"expression\\\": \\\"1 mm\\\", \\\"value\\\": 0.1, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_hub_D_trial\\\", \\\"expression\\\": \\\"24 mm\\\", \\\"value\\\": 2.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_hub_L_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_D_trial\\\", \\\"expression\\\": \\\"45 mm\\\", \\\"value\\\": 4.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_slot_L_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_pin_D_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"bracket_W_trial\\\", \\\"expression\\\": \\\"24 mm\\\", \\\"value\\\": 2.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"bracket_top_trial\\\", \\\"expression\\\": \\\"48 mm\\\", \\\"value\\\": 4.800000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"foot_H_trial\\\", \\\"expression\\\": \\\"16 mm\\\", \\\"value\\\": 1.6, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_x_trial\\\", \\\"expression\\\": \\\"22.913529873909926 mm\\\", \\\"value\\\": 2.291352987390993, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_envelope_t_trial\\\", \\\"expression\\\": \\\"3.81 mm\\\", \\\"value\\\": 0.381, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"stand_hip_trial\\\", \\\"expression\\\": \\\"acos(stance_h / ( 2 * L_thigh ))\\\", \\\"value\\\": 0.7953988301841436, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"stand_knee_trial\\\", \\\"expression\\\": \\\"-2 * stand_hip_trial\\\", \\\"value\\\": -1.5907976603682872, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"output_phase_trial\\\", \\\"expression\\\": \\\"29.619538694349 deg\\\", \\\"value\\\": 0.5169584731382524, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"abad_adapter_x_trial\\\", \\\"expression\\\": \\\"143.5 mm + pin_H + clearance_trial\\\", \\\"value\\\": 14.750000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"cross_W_trial\\\", \\\"expression\\\": \\\"6 mm\\\", \\\"value\\\": 0.6000000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_output_x_trial\\\", \\\"expression\\\": \\\"143.5 mm\\\", \\\"value\\\": 14.350000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_6_phase_trial\\\", \\\"expression\\\": \\\"-120.38046130564777 deg\\\", \\\"value\\\": -2.1010354048531856, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"abad_3_phase_trial\\\", \\\"expression\\\": \\\"-150.38046130565104 deg\\\", \\\"value\\\": -2.6246341804515416, \\\"unit\\\": \\\"deg\\\"}]}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "c5actualres": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"poses\\\": [{\\\"pose\\\": \\\"stand\\\", \\\"angles_deg\\\": [0.0, 45.6, -91.1], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [47.10546407343944, 120.0, -139.93266810267306], [189.75555390427573, 120.0, -280.11452096264327]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.38272835094778}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769376}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573645964}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481366}]}, {\\\"pose\\\": \\\"crouch\\\", \\\"angles_deg\\\": [0.0, 59.99999999999999, -119.99999999999999], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [16.79491924311229, 119.99999999999993, -99.99999999999999], [189.99999999999997, 119.99999999999993, -200.00000000000003]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.38272835094779}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769381}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573645902}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481562}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_shank_box\\\", \\\"mm3\\\": 3.9737659784549835}]}, {\\\"pose\\\": \\\"max_knee\\\", \\\"angles_deg\\\": [0.0, 75.00000000000001, -150.00000000000003], \\\"hip_knee_foot_mm\\\": [[190.0, 120.00000000000003, 0.0], [-3.1851652578136225, 120.0, -51.763809020504155], [190.00000000000006, 120.0, -103.52761804100834]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.38272835094645}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769381}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646055}, {\\\"a\\\": \\\"AZN_C3_inner_plate\\\", \\\"b\\\": \\\"AZN_C4_shank_box\\\", \\\"mm3\\\": 285.791359360261}, {\\\"a\\\": \\\"AZN_C3_outer_plate\\\", \\\"b\\\": \\\"AZN_C4_shank_box\\\", \\\"mm3\\\": 360.84094213212217}, {\\\"a\\\": \\\"AZN_C3_idler_envelope\\\", \\\"b\\\": \\\"AZN_C4_shank_box\\\", \\\"mm3\\\": 673.8953671402636}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.839928248165}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_shank_box\\\", \\\"mm3\\\": 890.2323749212285}]}, {\\\"pose\\\": \\\"extension\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[189.99999999999994, 120.00000000000003, -7.549516567451064e-14], [189.99999999999977, 120.00000000000007, -200.0], [189.99999999999972, 120.00000000000007, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.873257364641}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481323}]}, {\\\"pose\\\": \\\"abad_minus_trial\\\", \\\"angles_deg\\\": [-20.0, 45.6, -91.1], \\\"hip_knee_foot_mm\\\": [[190.00000000000003, 115.47694655894313, -25.651510749425235], [47.10546407343939, 67.61715535852366, -157.1452063723907], [189.7555539042757, 19.67213795169885, -288.8730590730007]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_abad_spacer\\\", \\\"mm3\\\": 109.75658695438206}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.3827283546414}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769447}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573645968}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481394}]}, {\\\"pose\\\": \\\"abad_plus_trial\\\", \\\"angles_deg\\\": [20.0, 45.6, -91.1], \\\"hip_knee_foot_mm\\\": [[190.00000000000003, 115.47694655894313, 25.651510749425128], [47.10546407343939, 163.33673775936248, -105.84218487354033], [189.75555390427562, 211.28175516618728, -237.57003757415026]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_abad_spacer\\\", \\\"mm3\\\": 109.75488347894616}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.38272834725088}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769288}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646193}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481134}]}, {\\\"pose\\\": \\\"trot_trial\\\", \\\"angles_deg\\\": [0.0, 35.0, -90.0], \\\"hip_knee_foot_mm\\\": [[189.99999999999994, 119.99999999999993, 3.552713678800501e-14], [75.28471272979078, 119.99999999999989, -163.8304088577982], [239.11512158758904, 119.99999999999993, -278.5456961280075]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 30.717048129765914}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 77.3956529241403}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.873257364593}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282480912}]}], \\\"masses\\\": [{\\\"component\\\": \\\"FL_abad_link\\\", \\\"mass_g\\\": 235.4691523373882, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C2_knee_mount_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 34.65825686834313, \\\"volume_cm3\\\": 12.932185398635497}, {\\\"body\\\": \\\"AZN_C2_spindle_flange\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 12.235187843809122, \\\"volume_cm3\\\": 1.5586226552623086}, {\\\"body\\\": \\\"AZN_C2_fixed_spindle\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 24.054212835787858, \\\"volume_cm3\\\": 3.0642309344952685}, {\\\"body\\\": \\\"AZN_C2_top_bridge\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 82.4565605666043, \\\"volume_cm3\\\": 30.76737334574787}, {\\\"body\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 25.193262952013587, \\\"volume_cm3\\\": 9.400471250751337}, {\\\"body\\\": \\\"AZN_C3_drive_shaft\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 26.634422517135576, \\\"volume_cm3\\\": 3.3929200658771435}, {\\\"body\\\": \\\"AZN_C3_6801_a\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 9.155582740265292, \\\"volume_cm3\\\": 1.1663162726452603}, {\\\"body\\\": \\\"AZN_C3_6801_b\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 9.155582740265292, \\\"volume_cm3\\\": 1.1663162726452603}, {\\\"body\\\": \\\"AZN_C5_20T_flange_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 2.250519181914293, \\\"volume_cm3\\\": 0.8397459634008556}, {\\\"body\\\": \\\"AZN_C5_20T_flange_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 2.250519181914293, \\\"volume_cm3\\\": 0.8397459634008556}, {\\\"body\\\": \\\"AZN_C5_abad_spacer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 7.425044909335461, \\\"volume_cm3\\\": 2.7705391452744257}]}, {\\\"component\\\": \\\"FL_hip_link\\\", \\\"mass_g\\\": 293.6939342142292, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C3_inner_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 58.59286311943049, \\\"volume_cm3\\\": 21.863008626653166}, {\\\"body\\\": \\\"AZN_C3_outer_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 49.184801887330515, \\\"volume_cm3\\\": 18.35253801766064}, {\\\"body\\\": \\\"AZN_C3_6806\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 37.28819152398959, \\\"volume_cm3\\\": 4.750088092227974}, {\\\"body\\\": \\\"AZN_C3_6806_seat\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 9.699227494987401, \\\"volume_cm3\\\": 3.6191147369355976}, {\\\"body\\\": \\\"AZN_C3_retainer_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.0983643386765305, \\\"volume_cm3\\\": 1.1561060965210934}, {\\\"body\\\": \\\"AZN_C3_retainer_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.0983643386765336, \\\"volume_cm3\\\": 1.1561060965210945}, {\\\"body\\\": \\\"AZN_C3_cross_upper\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 0.8683199999999989, \\\"volume_cm3\\\": 0.32399999999999957}, {\\\"body\\\": \\\"AZN_C3_cross_lower\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 0.8683200000000015, \\\"volume_cm3\\\": 0.32400000000000057}, {\\\"body\\\": \\\"AZN_C3_idler_bracket\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.2189349691571145, \\\"volume_cm3\\\": 1.201095137745192}, {\\\"body\\\": \\\"AZN_C3_idler_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 28.365188741851156, \\\"volume_cm3\\\": 10.584025649944461}, {\\\"body\\\": \\\"AZN_C4_6001_inner\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 31.566722983271596, \\\"volume_cm3\\\": 4.021238596595108}, {\\\"body\\\": \\\"AZN_C4_6001_outer\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 31.566722983271596, \\\"volume_cm3\\\": 4.021238596595108}, {\\\"body\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"material\\\": \\\"\\\\uace0\\\\ubb34\\\", \\\"mass_g\\\": 28.16923500000004, \\\"volume_cm3\\\": 30.289500000000043}, {\\\"body\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 4.640653068334657, \\\"volume_cm3\\\": 1.731586965796514}, {\\\"body\\\": \\\"AZN_C5_idler_pin\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 3.468023765252008, \\\"volume_cm3\\\": 0.44178646691108386}]}, {\\\"component\\\": \\\"FL_knee_link\\\", \\\"mass_g\\\": 189.7781081847445, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 64.03524240385399, \\\"volume_cm3\\\": 23.893747165617157}, {\\\"body\\\": \\\"AZN_C4_knee_shaft\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 37.288191523989575, \\\"volume_cm3\\\": 4.750088092227972}, {\\\"body\\\": \\\"AZN_C4_shank_box\\\", \\\"material\\\": \\\"AZN_PETG_TDS_density\\\", \\\"mass_g\\\": 78.21994529949362, \\\"volume_cm3\\\": 62.57595623959489}, {\\\"body\\\": \\\"AZN_C5_30T_flange_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 5.117364478703665, \\\"volume_cm3\\\": 1.9094643577252484}, {\\\"body\\\": \\\"AZN_C5_30T_flange_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 5.117364478703665, \\\"volume_cm3\\\": 1.9094643577252484}]}, {\\\"component\\\": \\\"FL_foot\\\", \\\"mass_g\\\": 13.797874934566963, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C4_TPU_pad\\\", \\\"material\\\": \\\"AZN_TPU_TDS_density\\\", \\\"mass_g\\\": 13.797874934566963, \\\"volume_cm3\\\": 11.30973355292374}]}], \\\"timeline_issues\\\": [{\\\"name\\\": \\\"\\\\uadf8\\\\ub8f91\\\", \\\"state\\\": 5, \\\"message\\\": \\\"\\\"}], \\\"params\\\": [{\\\"name\\\": \\\"L_thigh\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"L_shank\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_spacing\\\", \\\"expression\\\": \\\"380 mm\\\", \\\"value\\\": 38.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_W\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_L\\\", \\\"expression\\\": \\\"300 mm\\\", \\\"value\\\": 30.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_H\\\", \\\"expression\\\": \\\"100 mm\\\", \\\"value\\\": 10.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_y\\\", \\\"expression\\\": \\\"45 mm\\\", \\\"value\\\": 4.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_x\\\", \\\"expression\\\": \\\"125 mm\\\", \\\"value\\\": 12.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_offset\\\", \\\"expression\\\": \\\"75 mm\\\", \\\"value\\\": 7.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"leg_y\\\", \\\"expression\\\": \\\"abad_y + abad_offset\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_D\\\", \\\"expression\\\": \\\"80 mm\\\", \\\"value\\\": 8.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_L\\\", \\\"expression\\\": \\\"44 mm\\\", \\\"value\\\": 4.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"flange_BC\\\", \\\"expression\\\": \\\"25 mm\\\", \\\"value\\\": 2.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pilot_D\\\", \\\"expression\\\": \\\"34 mm\\\", \\\"value\\\": 3.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"htd_p\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"Ts_teeth\\\", \\\"expression\\\": \\\"20\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"Tl_teeth\\\", \\\"expression\\\": \\\"30\\\", \\\"value\\\": 30.0, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"pd_s\\\", \\\"expression\\\": \\\"Ts_teeth * htd_p / PI\\\", \\\"value\\\": 3.183098861837907, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pd_l\\\", \\\"expression\\\": \\\"Tl_teeth * htd_p / PI\\\", \\\"value\\\": 4.7746482927568605, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_ratio\\\", \\\"expression\\\": \\\"Tl_teeth / Ts_teeth\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"belt_C\\\", \\\"expression\\\": \\\"L_thigh\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_L\\\", \\\"expression\\\": \\\"530 mm\\\", \\\"value\\\": 53.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_w\\\", \\\"expression\\\": \\\"15 mm\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"stance_h\\\", \\\"expression\\\": \\\"280 mm\\\", \\\"value\\\": 28.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"crouch_h\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"foot_D\\\", \\\"expression\\\": \\\"30 mm\\\", \\\"value\\\": 3.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_OD\\\", \\\"expression\\\": \\\"42 mm\\\", \\\"value\\\": 4.2, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_ID\\\", \\\"expression\\\": \\\"30 mm\\\", \\\"value\\\": 3.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_W\\\", \\\"expression\\\": \\\"7 mm\\\", \\\"value\\\": 0.7000000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_hipmot\\\", \\\"expression\\\": \\\"65 mm\\\", \\\"value\\\": 6.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_belt\\\", \\\"expression\\\": \\\"leg_y\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_kneemot\\\", \\\"expression\\\": \\\"139 mm\\\", \\\"value\\\": 13.9, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"plate_t\\\", \\\"expression\\\": \\\"3 mm\\\", \\\"value\\\": 0.30000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"fit_brg\\\", \\\"expression\\\": \\\"0.10 mm\\\", \\\"value\\\": 0.010000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clr_M3\\\", \\\"expression\\\": \\\"3.4 mm\\\", \\\"value\\\": 0.34, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clr_M4\\\", \\\"expression\\\": \\\"4.5 mm\\\", \\\"value\\\": 0.45, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"housing_BC\\\", \\\"expression\\\": \\\"74 mm\\\", \\\"value\\\": 7.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_PCD\\\", \\\"expression\\\": \\\"20.4 mm\\\", \\\"value\\\": 2.04, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_D\\\", \\\"expression\\\": \\\"4 mm\\\", \\\"value\\\": 0.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_H\\\", \\\"expression\\\": \\\"3.5 mm\\\", \\\"value\\\": 0.35000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_mount_L\\\", \\\"expression\\\": \\\"40.5 mm\\\", \\\"value\\\": 4.05, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"output_boss_H\\\", \\\"expression\\\": \\\"1.5 mm\\\", \\\"value\\\": 0.15000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"output_face_offset\\\", \\\"expression\\\": \\\"3.5 mm\\\", \\\"value\\\": 0.35000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_ref_output_x\\\", \\\"expression\\\": \\\"29.5 mm\\\", \\\"value\\\": 2.95, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_w_trial\\\", \\\"expression\\\": \\\"belt_w\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_belt_trial\\\", \\\"expression\\\": \\\"y_belt\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_side_clearance\\\", \\\"expression\\\": \\\"1.5 mm\\\", \\\"value\\\": 0.15000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_support_trial\\\", \\\"expression\\\": \\\"y_belt + belt_w / 2 + belt_side_clearance + brg_W / 2\\\", \\\"value\\\": 13.25, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"drive_shaft_D_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_plate_W_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_end_D_trial\\\", \\\"expression\\\": \\\"54 mm\\\", \\\"value\\\": 5.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_end_D_trial\\\", \\\"expression\\\": \\\"44 mm\\\", \\\"value\\\": 4.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clearance_trial\\\", \\\"expression\\\": \\\"0.5 mm\\\", \\\"value\\\": 0.05, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_inner_y_trial\\\", \\\"expression\\\": \\\"y_hipmot + act_mount_L + pin_H + clearance_trial - leg_y - belt_side_clearance\\\", \\\"value\\\": -1.1999999999999988, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_outer_y_trial\\\", \\\"expression\\\": \\\"y_support_trial - leg_y - brg_W / 2\\\", \\\"value\\\": 0.8999999999999999, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_OD_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_ID_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_W_trial\\\", \\\"expression\\\": \\\"8 mm\\\", \\\"value\\\": 0.8, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shaft_brg_OD_trial\\\", \\\"expression\\\": \\\"21 mm\\\", \\\"value\\\": 2.1, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shaft_brg_W_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_W_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_B_trial\\\", \\\"expression\\\": \\\"22 mm\\\", \\\"value\\\": 2.2, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_wall_trial\\\", \\\"expression\\\": \\\"3 mm\\\", \\\"value\\\": 0.30000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_flange_t_trial\\\", \\\"expression\\\": \\\"1 mm\\\", \\\"value\\\": 0.1, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_hub_D_trial\\\", \\\"expression\\\": \\\"24 mm\\\", \\\"value\\\": 2.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_hub_L_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_D_trial\\\", \\\"expression\\\": \\\"45 mm\\\", \\\"value\\\": 4.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_slot_L_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_pin_D_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"bracket_W_trial\\\", \\\"expression\\\": \\\"24 mm\\\", \\\"value\\\": 2.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"bracket_top_trial\\\", \\\"expression\\\": \\\"48 mm\\\", \\\"value\\\": 4.800000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"foot_H_trial\\\", \\\"expression\\\": \\\"16 mm\\\", \\\"value\\\": 1.6, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_x_trial\\\", \\\"expression\\\": \\\"22.913529873909926 mm\\\", \\\"value\\\": 2.291352987390993, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_envelope_t_trial\\\", \\\"expression\\\": \\\"3.81 mm\\\", \\\"value\\\": 0.381, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"stand_hip_trial\\\", \\\"expression\\\": \\\"acos(stance_h / ( 2 * L_thigh ))\\\", \\\"value\\\": 0.7953988301841436, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"stand_knee_trial\\\", \\\"expression\\\": \\\"-2 * stand_hip_trial\\\", \\\"value\\\": -1.5907976603682872, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"output_phase_trial\\\", \\\"expression\\\": \\\"29.619538694349 deg\\\", \\\"value\\\": 0.5169584731382524, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"abad_adapter_x_trial\\\", \\\"expression\\\": \\\"143.5 mm + pin_H + clearance_trial\\\", \\\"value\\\": 14.750000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"cross_W_trial\\\", \\\"expression\\\": \\\"6 mm\\\", \\\"value\\\": 0.6000000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_output_x_trial\\\", \\\"expression\\\": \\\"143.5 mm\\\", \\\"value\\\": 14.350000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_6_phase_trial\\\", \\\"expression\\\": \\\"-120.38046130564777 deg\\\", \\\"value\\\": -2.1010354048531856, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"abad_3_phase_trial\\\", \\\"expression\\\": \\\"-150.38046130565104 deg\\\", \\\"value\\\": -2.6246341804515416, \\\"unit\\\": \\\"deg\\\"}]}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "c5actualres2": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"poses\\\": [{\\\"pose\\\": \\\"stand\\\", \\\"angles_deg\\\": [0.0, 45.6, -91.1], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [47.10546407343944, 120.0, -139.93266810267306], [189.75555390427573, 120.0, -280.11452096264327]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.38272835094778}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769376}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573645964}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481366}]}, {\\\"pose\\\": \\\"crouch\\\", \\\"angles_deg\\\": [0.0, 59.99999999999999, -119.99999999999999], \\\"hip_knee_foot_mm\\\": [[190.0, 120.0, 0.0], [16.79491924311229, 119.99999999999993, -99.99999999999999], [189.99999999999997, 119.99999999999993, -200.00000000000003]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.38272835094779}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769381}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573645902}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481562}]}, {\\\"pose\\\": \\\"max_knee\\\", \\\"angles_deg\\\": [0.0, 75.00000000000001, -150.00000000000003], \\\"hip_knee_foot_mm\\\": [[190.0, 120.00000000000003, 0.0], [-3.1851652578136225, 120.0, -51.763809020504155], [190.00000000000006, 120.0, -103.52761804100834]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.38272835094645}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769381}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646055}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.839928248165}]}, {\\\"pose\\\": \\\"extension\\\", \\\"angles_deg\\\": [0.0, 0.0, 0.0], \\\"hip_knee_foot_mm\\\": [[189.99999999999994, 120.00000000000003, -7.549516567451064e-14], [189.99999999999977, 120.00000000000007, -200.0], [189.99999999999972, 120.00000000000007, -400.0]], \\\"pairs\\\": [{\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.873257364641}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481323}]}, {\\\"pose\\\": \\\"abad_minus_trial\\\", \\\"angles_deg\\\": [-20.0, 45.6, -91.1], \\\"hip_knee_foot_mm\\\": [[190.00000000000003, 115.47694655894313, -25.651510749425235], [47.10546407343939, 67.61715535852366, -157.1452063723907], [189.7555539042757, 19.67213795169885, -288.8730590730007]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_abad_spacer\\\", \\\"mm3\\\": 109.75658695438206}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.3827283546414}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769447}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573645968}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481394}]}, {\\\"pose\\\": \\\"abad_plus_trial\\\", \\\"angles_deg\\\": [20.0, 45.6, -91.1], \\\"hip_knee_foot_mm\\\": [[190.00000000000003, 115.47694655894313, 25.651510749425128], [47.10546407343939, 163.33673775936248, -105.84218487354033], [189.75555390427562, 211.28175516618728, -237.57003757415026]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_abad_spacer\\\", \\\"mm3\\\": 109.75488347894616}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 37.38272834725088}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 94.24777960769288}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.8732573646193}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282481134}]}, {\\\"pose\\\": \\\"trot_trial\\\", \\\"angles_deg\\\": [0.0, 35.0, -90.0], \\\"hip_knee_foot_mm\\\": [[189.99999999999994, 119.99999999999993, 3.552713678800501e-14], [75.28471272979078, 119.99999999999989, -163.8304088577982], [239.11512158758904, 119.99999999999993, -278.5456961280075]], \\\"pairs\\\": [{\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C3_inner_plate\\\", \\\"mm3\\\": 30.717048129765914}, {\\\"a\\\": \\\"\\\\ubcf8\\\\uccb41\\\", \\\"b\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"mm3\\\": 77.3956529241403}, {\\\"a\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"b\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"mm3\\\": 1132.873257364593}, {\\\"a\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"b\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"mm3\\\": 1770.8399282480912}]}], \\\"masses\\\": [{\\\"component\\\": \\\"FL_abad_link\\\", \\\"mass_g\\\": 235.4691523373882, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C2_knee_mount_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 34.65825686834313, \\\"volume_cm3\\\": 12.932185398635497}, {\\\"body\\\": \\\"AZN_C2_spindle_flange\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 12.235187843809122, \\\"volume_cm3\\\": 1.5586226552623086}, {\\\"body\\\": \\\"AZN_C2_fixed_spindle\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 24.054212835787858, \\\"volume_cm3\\\": 3.0642309344952685}, {\\\"body\\\": \\\"AZN_C2_top_bridge\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 82.4565605666043, \\\"volume_cm3\\\": 30.76737334574787}, {\\\"body\\\": \\\"AZN_C3_20T_GT_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 25.193262952013587, \\\"volume_cm3\\\": 9.400471250751337}, {\\\"body\\\": \\\"AZN_C3_drive_shaft\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 26.634422517135576, \\\"volume_cm3\\\": 3.3929200658771435}, {\\\"body\\\": \\\"AZN_C3_6801_a\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 9.155582740265292, \\\"volume_cm3\\\": 1.1663162726452603}, {\\\"body\\\": \\\"AZN_C3_6801_b\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 9.155582740265292, \\\"volume_cm3\\\": 1.1663162726452603}, {\\\"body\\\": \\\"AZN_C5_20T_flange_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 2.250519181914293, \\\"volume_cm3\\\": 0.8397459634008556}, {\\\"body\\\": \\\"AZN_C5_20T_flange_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 2.250519181914293, \\\"volume_cm3\\\": 0.8397459634008556}, {\\\"body\\\": \\\"AZN_C5_abad_spacer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 7.425044909335461, \\\"volume_cm3\\\": 2.7705391452744257}]}, {\\\"component\\\": \\\"FL_hip_link\\\", \\\"mass_g\\\": 293.6939342142292, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C3_inner_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 58.59286311943049, \\\"volume_cm3\\\": 21.863008626653166}, {\\\"body\\\": \\\"AZN_C3_outer_plate\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 49.184801887330515, \\\"volume_cm3\\\": 18.35253801766064}, {\\\"body\\\": \\\"AZN_C3_6806\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 37.28819152398959, \\\"volume_cm3\\\": 4.750088092227974}, {\\\"body\\\": \\\"AZN_C3_6806_seat\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 9.699227494987401, \\\"volume_cm3\\\": 3.6191147369355976}, {\\\"body\\\": \\\"AZN_C3_retainer_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.0983643386765305, \\\"volume_cm3\\\": 1.1561060965210934}, {\\\"body\\\": \\\"AZN_C3_retainer_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.0983643386765336, \\\"volume_cm3\\\": 1.1561060965210945}, {\\\"body\\\": \\\"AZN_C3_cross_upper\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 0.8683199999999989, \\\"volume_cm3\\\": 0.32399999999999957}, {\\\"body\\\": \\\"AZN_C3_cross_lower\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 0.8683200000000015, \\\"volume_cm3\\\": 0.32400000000000057}, {\\\"body\\\": \\\"AZN_C3_idler_bracket\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 3.2189349691571145, \\\"volume_cm3\\\": 1.201095137745192}, {\\\"body\\\": \\\"AZN_C3_idler_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 28.365188741851156, \\\"volume_cm3\\\": 10.584025649944461}, {\\\"body\\\": \\\"AZN_C4_6001_inner\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 31.566722983271596, \\\"volume_cm3\\\": 4.021238596595108}, {\\\"body\\\": \\\"AZN_C4_6001_outer\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 31.566722983271596, \\\"volume_cm3\\\": 4.021238596595108}, {\\\"body\\\": \\\"AZN_C5_GT3_530_belt_envelope\\\", \\\"material\\\": \\\"\\\\uace0\\\\ubb34\\\", \\\"mass_g\\\": 28.16923500000004, \\\"volume_cm3\\\": 30.289500000000043}, {\\\"body\\\": \\\"AZN_C5_hip_output_spacer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 4.640653068334657, \\\"volume_cm3\\\": 1.731586965796514}, {\\\"body\\\": \\\"AZN_C5_idler_pin\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 3.468023765252008, \\\"volume_cm3\\\": 0.44178646691108386}]}, {\\\"component\\\": \\\"FL_knee_link\\\", \\\"mass_g\\\": 193.85310818474449, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C4_30T_GT_envelope\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 64.03524240385399, \\\"volume_cm3\\\": 23.893747165617157}, {\\\"body\\\": \\\"AZN_C4_knee_shaft\\\", \\\"material\\\": \\\"\\\\uac15\\\\ucca0\\\", \\\"mass_g\\\": 37.288191523989575, \\\"volume_cm3\\\": 4.750088092227972}, {\\\"body\\\": \\\"AZN_C4_shank_box\\\", \\\"material\\\": \\\"AZN_PETG_TDS_density\\\", \\\"mass_g\\\": 82.2949452994936, \\\"volume_cm3\\\": 65.83595623959488}, {\\\"body\\\": \\\"AZN_C5_30T_flange_inner\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 5.117364478703665, \\\"volume_cm3\\\": 1.9094643577252484}, {\\\"body\\\": \\\"AZN_C5_30T_flange_outer\\\", \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"mass_g\\\": 5.117364478703665, \\\"volume_cm3\\\": 1.9094643577252484}]}, {\\\"component\\\": \\\"FL_foot\\\", \\\"mass_g\\\": 13.797874934566963, \\\"bodies\\\": [{\\\"body\\\": \\\"AZN_C4_TPU_pad\\\", \\\"material\\\": \\\"AZN_TPU_TDS_density\\\", \\\"mass_g\\\": 13.797874934566963, \\\"volume_cm3\\\": 11.30973355292374}]}], \\\"timeline_issues\\\": [{\\\"name\\\": \\\"\\\\uadf8\\\\ub8f91\\\", \\\"state\\\": 5, \\\"message\\\": \\\"\\\"}], \\\"params\\\": [{\\\"name\\\": \\\"L_thigh\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"L_shank\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_spacing\\\", \\\"expression\\\": \\\"380 mm\\\", \\\"value\\\": 38.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_W\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_L\\\", \\\"expression\\\": \\\"300 mm\\\", \\\"value\\\": 30.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"body_H\\\", \\\"expression\\\": \\\"100 mm\\\", \\\"value\\\": 10.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_y\\\", \\\"expression\\\": \\\"45 mm\\\", \\\"value\\\": 4.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_x\\\", \\\"expression\\\": \\\"125 mm\\\", \\\"value\\\": 12.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_offset\\\", \\\"expression\\\": \\\"75 mm\\\", \\\"value\\\": 7.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"leg_y\\\", \\\"expression\\\": \\\"abad_y + abad_offset\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_D\\\", \\\"expression\\\": \\\"80 mm\\\", \\\"value\\\": 8.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_L\\\", \\\"expression\\\": \\\"44 mm\\\", \\\"value\\\": 4.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"flange_BC\\\", \\\"expression\\\": \\\"25 mm\\\", \\\"value\\\": 2.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pilot_D\\\", \\\"expression\\\": \\\"34 mm\\\", \\\"value\\\": 3.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"htd_p\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"Ts_teeth\\\", \\\"expression\\\": \\\"20\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"Tl_teeth\\\", \\\"expression\\\": \\\"30\\\", \\\"value\\\": 30.0, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"pd_s\\\", \\\"expression\\\": \\\"Ts_teeth * htd_p / PI\\\", \\\"value\\\": 3.183098861837907, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pd_l\\\", \\\"expression\\\": \\\"Tl_teeth * htd_p / PI\\\", \\\"value\\\": 4.7746482927568605, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_ratio\\\", \\\"expression\\\": \\\"Tl_teeth / Ts_teeth\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"\\\"}, {\\\"name\\\": \\\"belt_C\\\", \\\"expression\\\": \\\"L_thigh\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_L\\\", \\\"expression\\\": \\\"530 mm\\\", \\\"value\\\": 53.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_w\\\", \\\"expression\\\": \\\"15 mm\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"stance_h\\\", \\\"expression\\\": \\\"280 mm\\\", \\\"value\\\": 28.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"crouch_h\\\", \\\"expression\\\": \\\"200 mm\\\", \\\"value\\\": 20.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"foot_D\\\", \\\"expression\\\": \\\"30 mm\\\", \\\"value\\\": 3.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_OD\\\", \\\"expression\\\": \\\"42 mm\\\", \\\"value\\\": 4.2, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_ID\\\", \\\"expression\\\": \\\"30 mm\\\", \\\"value\\\": 3.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"brg_W\\\", \\\"expression\\\": \\\"7 mm\\\", \\\"value\\\": 0.7000000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_hipmot\\\", \\\"expression\\\": \\\"65 mm\\\", \\\"value\\\": 6.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_belt\\\", \\\"expression\\\": \\\"leg_y\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_kneemot\\\", \\\"expression\\\": \\\"139 mm\\\", \\\"value\\\": 13.9, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"plate_t\\\", \\\"expression\\\": \\\"3 mm\\\", \\\"value\\\": 0.30000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"fit_brg\\\", \\\"expression\\\": \\\"0.10 mm\\\", \\\"value\\\": 0.010000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clr_M3\\\", \\\"expression\\\": \\\"3.4 mm\\\", \\\"value\\\": 0.34, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clr_M4\\\", \\\"expression\\\": \\\"4.5 mm\\\", \\\"value\\\": 0.45, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"housing_BC\\\", \\\"expression\\\": \\\"74 mm\\\", \\\"value\\\": 7.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_PCD\\\", \\\"expression\\\": \\\"20.4 mm\\\", \\\"value\\\": 2.04, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_D\\\", \\\"expression\\\": \\\"4 mm\\\", \\\"value\\\": 0.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pin_H\\\", \\\"expression\\\": \\\"3.5 mm\\\", \\\"value\\\": 0.35000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_mount_L\\\", \\\"expression\\\": \\\"40.5 mm\\\", \\\"value\\\": 4.05, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"output_boss_H\\\", \\\"expression\\\": \\\"1.5 mm\\\", \\\"value\\\": 0.15000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"output_face_offset\\\", \\\"expression\\\": \\\"3.5 mm\\\", \\\"value\\\": 0.35000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"act_ref_output_x\\\", \\\"expression\\\": \\\"29.5 mm\\\", \\\"value\\\": 2.95, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_w_trial\\\", \\\"expression\\\": \\\"belt_w\\\", \\\"value\\\": 1.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_belt_trial\\\", \\\"expression\\\": \\\"y_belt\\\", \\\"value\\\": 12.0, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_side_clearance\\\", \\\"expression\\\": \\\"1.5 mm\\\", \\\"value\\\": 0.15000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"y_support_trial\\\", \\\"expression\\\": \\\"y_belt + belt_w / 2 + belt_side_clearance + brg_W / 2\\\", \\\"value\\\": 13.25, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"drive_shaft_D_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_plate_W_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_end_D_trial\\\", \\\"expression\\\": \\\"54 mm\\\", \\\"value\\\": 5.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_end_D_trial\\\", \\\"expression\\\": \\\"44 mm\\\", \\\"value\\\": 4.4, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"clearance_trial\\\", \\\"expression\\\": \\\"0.5 mm\\\", \\\"value\\\": 0.05, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_inner_y_trial\\\", \\\"expression\\\": \\\"y_hipmot + act_mount_L + pin_H + clearance_trial - leg_y - belt_side_clearance\\\", \\\"value\\\": -1.1999999999999988, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"hip_outer_y_trial\\\", \\\"expression\\\": \\\"y_support_trial - leg_y - brg_W / 2\\\", \\\"value\\\": 0.8999999999999999, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_OD_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_ID_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"knee_brg_W_trial\\\", \\\"expression\\\": \\\"8 mm\\\", \\\"value\\\": 0.8, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shaft_brg_OD_trial\\\", \\\"expression\\\": \\\"21 mm\\\", \\\"value\\\": 2.1, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shaft_brg_W_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_W_trial\\\", \\\"expression\\\": \\\"28 mm\\\", \\\"value\\\": 2.8000000000000003, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_B_trial\\\", \\\"expression\\\": \\\"22 mm\\\", \\\"value\\\": 2.2, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"shank_wall_trial\\\", \\\"expression\\\": \\\"3 mm\\\", \\\"value\\\": 0.30000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_flange_t_trial\\\", \\\"expression\\\": \\\"1 mm\\\", \\\"value\\\": 0.1, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_hub_D_trial\\\", \\\"expression\\\": \\\"24 mm\\\", \\\"value\\\": 2.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"pulley_hub_L_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_D_trial\\\", \\\"expression\\\": \\\"45 mm\\\", \\\"value\\\": 4.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_slot_L_trial\\\", \\\"expression\\\": \\\"12 mm\\\", \\\"value\\\": 1.2000000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_pin_D_trial\\\", \\\"expression\\\": \\\"5 mm\\\", \\\"value\\\": 0.5, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"bracket_W_trial\\\", \\\"expression\\\": \\\"24 mm\\\", \\\"value\\\": 2.4000000000000004, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"bracket_top_trial\\\", \\\"expression\\\": \\\"48 mm\\\", \\\"value\\\": 4.800000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"foot_H_trial\\\", \\\"expression\\\": \\\"16 mm\\\", \\\"value\\\": 1.6, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"idler_x_trial\\\", \\\"expression\\\": \\\"22.913529873909926 mm\\\", \\\"value\\\": 2.291352987390993, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"belt_envelope_t_trial\\\", \\\"expression\\\": \\\"3.81 mm\\\", \\\"value\\\": 0.381, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"stand_hip_trial\\\", \\\"expression\\\": \\\"acos(stance_h / ( 2 * L_thigh ))\\\", \\\"value\\\": 0.7953988301841436, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"stand_knee_trial\\\", \\\"expression\\\": \\\"-2 * stand_hip_trial\\\", \\\"value\\\": -1.5907976603682872, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"output_phase_trial\\\", \\\"expression\\\": \\\"29.619538694349 deg\\\", \\\"value\\\": 0.5169584731382524, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"abad_adapter_x_trial\\\", \\\"expression\\\": \\\"143.5 mm + pin_H + clearance_trial\\\", \\\"value\\\": 14.750000000000002, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"cross_W_trial\\\", \\\"expression\\\": \\\"6 mm\\\", \\\"value\\\": 0.6000000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_output_x_trial\\\", \\\"expression\\\": \\\"143.5 mm\\\", \\\"value\\\": 14.350000000000001, \\\"unit\\\": \\\"mm\\\"}, {\\\"name\\\": \\\"abad_6_phase_trial\\\", \\\"expression\\\": \\\"-120.38046130564777 deg\\\", \\\"value\\\": -2.1010354048531856, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"abad_3_phase_trial\\\", \\\"expression\\\": \\\"-150.38046130565104 deg\\\", \\\"value\\\": -2.6246341804515416, \\\"unit\\\": \\\"deg\\\"}, {\\\"name\\\": \\\"shank_y_trial\\\", \\\"expression\\\": \\\"hip_outer_y_trial + knee_brg_W_trial + shank_B_trial / 2\\\", \\\"value\\\": 2.8, \\\"unit\\\": \\\"mm\\\"}]}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    },
+    "sfreadres": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n    \"message\": \"{\\\"vertical_section_edges_mm\\\": [3.000000000000007, 24.000000000000004, 3.000000000000007, 24.000000000000004], \\\"material\\\": \\\"\\\\uc54c\\\\ub8e8\\\\ubbf8\\\\ub284 5052 H32\\\", \\\"yield_properties\\\": [{\\\"id\\\": \\\"structural_Minimum_yield_stress\\\", \\\"value\\\": 167000.0, \\\"units\\\": \\\"Kilopascal\\\"}, {\\\"id\\\": \\\"compressive_stress_yield\\\", \\\"value\\\": 167000.0, \\\"units\\\": \\\"Kilopascal\\\"}], \\\"vertical_plane_z_mm\\\": 0.0, \\\"foot_world_mm\\\": [189.7555539042753, 119.99999999999989, -280.1145209626431]}\\n\",\n    \"success\": true\n}"
+        }
+      ]
+    }
+  },
+  "strength": {
+    "F_N": 66.2175,
+    "M_Nmm": 5297.4,
+    "I_mm4": 54,
+    "sigma_MPa": 147.14999999999998,
+    "SF": 1.1348963642541625
+  },
+  "latest_measurement": {
+    "poses": [
+      {
+        "pose": "stand",
+        "angles_deg": [
+          0,
+          45.6,
+          -91.1
+        ],
+        "hip_knee_foot_mm": [
+          [
+            190,
+            120,
+            0
+          ],
+          [
+            47.10546407343944,
+            120,
+            -139.93266810267306
+          ],
+          [
+            189.75555390427573,
+            120,
+            -280.11452096264327
+          ]
+        ],
+        "pairs": [
+          {
+            "a": "본체1",
+            "b": "AZN_C3_inner_plate",
+            "mm3": 37.38272835094778
+          },
+          {
+            "a": "본체1",
+            "b": "AZN_C5_hip_output_spacer",
+            "mm3": 94.24777960769376
+          },
+          {
+            "a": "AZN_C3_20T_GT_envelope",
+            "b": "AZN_C5_GT3_530_belt_envelope",
+            "mm3": 1132.8732573645964
+          },
+          {
+            "a": "AZN_C5_GT3_530_belt_envelope",
+            "b": "AZN_C4_30T_GT_envelope",
+            "mm3": 1770.8399282481366
+          }
+        ]
+      },
+      {
+        "pose": "crouch",
+        "angles_deg": [
+          0,
+          59.99999999999999,
+          -119.99999999999999
+        ],
+        "hip_knee_foot_mm": [
+          [
+            190,
+            120,
+            0
+          ],
+          [
+            16.79491924311229,
+            119.99999999999993,
+            -99.99999999999999
+          ],
+          [
+            189.99999999999997,
+            119.99999999999993,
+            -200.00000000000003
+          ]
+        ],
+        "pairs": [
+          {
+            "a": "본체1",
+            "b": "AZN_C3_inner_plate",
+            "mm3": 37.38272835094779
+          },
+          {
+            "a": "본체1",
+            "b": "AZN_C5_hip_output_spacer",
+            "mm3": 94.24777960769381
+          },
+          {
+            "a": "AZN_C3_20T_GT_envelope",
+            "b": "AZN_C5_GT3_530_belt_envelope",
+            "mm3": 1132.8732573645902
+          },
+          {
+            "a": "AZN_C5_GT3_530_belt_envelope",
+            "b": "AZN_C4_30T_GT_envelope",
+            "mm3": 1770.8399282481562
+          }
+        ]
+      },
+      {
+        "pose": "max_knee",
+        "angles_deg": [
+          0,
+          75.00000000000001,
+          -150.00000000000003
+        ],
+        "hip_knee_foot_mm": [
+          [
+            190,
+            120.00000000000003,
+            0
+          ],
+          [
+            -3.1851652578136225,
+            120,
+            -51.763809020504155
+          ],
+          [
+            190.00000000000006,
+            120,
+            -103.52761804100834
+          ]
+        ],
+        "pairs": [
+          {
+            "a": "본체1",
+            "b": "AZN_C3_inner_plate",
+            "mm3": 37.38272835094645
+          },
+          {
+            "a": "본체1",
+            "b": "AZN_C5_hip_output_spacer",
+            "mm3": 94.24777960769381
+          },
+          {
+            "a": "AZN_C3_20T_GT_envelope",
+            "b": "AZN_C5_GT3_530_belt_envelope",
+            "mm3": 1132.8732573646055
+          },
+          {
+            "a": "AZN_C5_GT3_530_belt_envelope",
+            "b": "AZN_C4_30T_GT_envelope",
+            "mm3": 1770.839928248165
+          }
+        ]
+      },
+      {
+        "pose": "extension",
+        "angles_deg": [
+          0,
+          0,
+          0
+        ],
+        "hip_knee_foot_mm": [
+          [
+            189.99999999999994,
+            120.00000000000003,
+            -7.549516567451064e-14
+          ],
+          [
+            189.99999999999977,
+            120.00000000000007,
+            -200
+          ],
+          [
+            189.99999999999972,
+            120.00000000000007,
+            -400
+          ]
+        ],
+        "pairs": [
+          {
+            "a": "AZN_C3_20T_GT_envelope",
+            "b": "AZN_C5_GT3_530_belt_envelope",
+            "mm3": 1132.873257364641
+          },
+          {
+            "a": "AZN_C5_GT3_530_belt_envelope",
+            "b": "AZN_C4_30T_GT_envelope",
+            "mm3": 1770.8399282481323
+          }
+        ]
+      },
+      {
+        "pose": "abad_minus_trial",
+        "angles_deg": [
+          -20,
+          45.6,
+          -91.1
+        ],
+        "hip_knee_foot_mm": [
+          [
+            190.00000000000003,
+            115.47694655894313,
+            -25.651510749425235
+          ],
+          [
+            47.10546407343939,
+            67.61715535852366,
+            -157.1452063723907
+          ],
+          [
+            189.7555539042757,
+            19.67213795169885,
+            -288.8730590730007
+          ]
+        ],
+        "pairs": [
+          {
+            "a": "본체1",
+            "b": "AZN_C5_abad_spacer",
+            "mm3": 109.75658695438206
+          },
+          {
+            "a": "본체1",
+            "b": "AZN_C3_inner_plate",
+            "mm3": 37.3827283546414
+          },
+          {
+            "a": "본체1",
+            "b": "AZN_C5_hip_output_spacer",
+            "mm3": 94.24777960769447
+          },
+          {
+            "a": "AZN_C3_20T_GT_envelope",
+            "b": "AZN_C5_GT3_530_belt_envelope",
+            "mm3": 1132.8732573645968
+          },
+          {
+            "a": "AZN_C5_GT3_530_belt_envelope",
+            "b": "AZN_C4_30T_GT_envelope",
+            "mm3": 1770.8399282481394
+          }
+        ]
+      },
+      {
+        "pose": "abad_plus_trial",
+        "angles_deg": [
+          20,
+          45.6,
+          -91.1
+        ],
+        "hip_knee_foot_mm": [
+          [
+            190.00000000000003,
+            115.47694655894313,
+            25.651510749425128
+          ],
+          [
+            47.10546407343939,
+            163.33673775936248,
+            -105.84218487354033
+          ],
+          [
+            189.75555390427562,
+            211.28175516618728,
+            -237.57003757415026
+          ]
+        ],
+        "pairs": [
+          {
+            "a": "본체1",
+            "b": "AZN_C5_abad_spacer",
+            "mm3": 109.75488347894616
+          },
+          {
+            "a": "본체1",
+            "b": "AZN_C3_inner_plate",
+            "mm3": 37.38272834725088
+          },
+          {
+            "a": "본체1",
+            "b": "AZN_C5_hip_output_spacer",
+            "mm3": 94.24777960769288
+          },
+          {
+            "a": "AZN_C3_20T_GT_envelope",
+            "b": "AZN_C5_GT3_530_belt_envelope",
+            "mm3": 1132.8732573646193
+          },
+          {
+            "a": "AZN_C5_GT3_530_belt_envelope",
+            "b": "AZN_C4_30T_GT_envelope",
+            "mm3": 1770.8399282481134
+          }
+        ]
+      },
+      {
+        "pose": "trot_trial",
+        "angles_deg": [
+          0,
+          35,
+          -90
+        ],
+        "hip_knee_foot_mm": [
+          [
+            189.99999999999994,
+            119.99999999999993,
+            3.552713678800501e-14
+          ],
+          [
+            75.28471272979078,
+            119.99999999999989,
+            -163.8304088577982
+          ],
+          [
+            239.11512158758904,
+            119.99999999999993,
+            -278.5456961280075
+          ]
+        ],
+        "pairs": [
+          {
+            "a": "본체1",
+            "b": "AZN_C3_inner_plate",
+            "mm3": 30.717048129765914
+          },
+          {
+            "a": "본체1",
+            "b": "AZN_C5_hip_output_spacer",
+            "mm3": 77.3956529241403
+          },
+          {
+            "a": "AZN_C3_20T_GT_envelope",
+            "b": "AZN_C5_GT3_530_belt_envelope",
+            "mm3": 1132.873257364593
+          },
+          {
+            "a": "AZN_C5_GT3_530_belt_envelope",
+            "b": "AZN_C4_30T_GT_envelope",
+            "mm3": 1770.8399282480912
+          }
+        ]
+      }
+    ],
+    "masses": [
+      {
+        "component": "FL_abad_link",
+        "mass_g": 235.4691523373882,
+        "bodies": [
+          {
+            "body": "AZN_C2_knee_mount_plate",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 34.65825686834313,
+            "volume_cm3": 12.932185398635497
+          },
+          {
+            "body": "AZN_C2_spindle_flange",
+            "material": "강철",
+            "mass_g": 12.235187843809122,
+            "volume_cm3": 1.5586226552623086
+          },
+          {
+            "body": "AZN_C2_fixed_spindle",
+            "material": "강철",
+            "mass_g": 24.054212835787858,
+            "volume_cm3": 3.0642309344952685
+          },
+          {
+            "body": "AZN_C2_top_bridge",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 82.4565605666043,
+            "volume_cm3": 30.76737334574787
+          },
+          {
+            "body": "AZN_C3_20T_GT_envelope",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 25.193262952013587,
+            "volume_cm3": 9.400471250751337
+          },
+          {
+            "body": "AZN_C3_drive_shaft",
+            "material": "강철",
+            "mass_g": 26.634422517135576,
+            "volume_cm3": 3.3929200658771435
+          },
+          {
+            "body": "AZN_C3_6801_a",
+            "material": "강철",
+            "mass_g": 9.155582740265292,
+            "volume_cm3": 1.1663162726452603
+          },
+          {
+            "body": "AZN_C3_6801_b",
+            "material": "강철",
+            "mass_g": 9.155582740265292,
+            "volume_cm3": 1.1663162726452603
+          },
+          {
+            "body": "AZN_C5_20T_flange_inner",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 2.250519181914293,
+            "volume_cm3": 0.8397459634008556
+          },
+          {
+            "body": "AZN_C5_20T_flange_outer",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 2.250519181914293,
+            "volume_cm3": 0.8397459634008556
+          },
+          {
+            "body": "AZN_C5_abad_spacer",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 7.425044909335461,
+            "volume_cm3": 2.7705391452744257
+          }
+        ]
+      },
+      {
+        "component": "FL_hip_link",
+        "mass_g": 293.6939342142292,
+        "bodies": [
+          {
+            "body": "AZN_C3_inner_plate",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 58.59286311943049,
+            "volume_cm3": 21.863008626653166
+          },
+          {
+            "body": "AZN_C3_outer_plate",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 49.184801887330515,
+            "volume_cm3": 18.35253801766064
+          },
+          {
+            "body": "AZN_C3_6806",
+            "material": "강철",
+            "mass_g": 37.28819152398959,
+            "volume_cm3": 4.750088092227974
+          },
+          {
+            "body": "AZN_C3_6806_seat",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 9.699227494987401,
+            "volume_cm3": 3.6191147369355976
+          },
+          {
+            "body": "AZN_C3_retainer_inner",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 3.0983643386765305,
+            "volume_cm3": 1.1561060965210934
+          },
+          {
+            "body": "AZN_C3_retainer_outer",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 3.0983643386765336,
+            "volume_cm3": 1.1561060965210945
+          },
+          {
+            "body": "AZN_C3_cross_upper",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 0.8683199999999989,
+            "volume_cm3": 0.32399999999999957
+          },
+          {
+            "body": "AZN_C3_cross_lower",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 0.8683200000000015,
+            "volume_cm3": 0.32400000000000057
+          },
+          {
+            "body": "AZN_C3_idler_bracket",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 3.2189349691571145,
+            "volume_cm3": 1.201095137745192
+          },
+          {
+            "body": "AZN_C3_idler_envelope",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 28.365188741851156,
+            "volume_cm3": 10.584025649944461
+          },
+          {
+            "body": "AZN_C4_6001_inner",
+            "material": "강철",
+            "mass_g": 31.566722983271596,
+            "volume_cm3": 4.021238596595108
+          },
+          {
+            "body": "AZN_C4_6001_outer",
+            "material": "강철",
+            "mass_g": 31.566722983271596,
+            "volume_cm3": 4.021238596595108
+          },
+          {
+            "body": "AZN_C5_GT3_530_belt_envelope",
+            "material": "고무",
+            "mass_g": 28.16923500000004,
+            "volume_cm3": 30.289500000000043
+          },
+          {
+            "body": "AZN_C5_hip_output_spacer",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 4.640653068334657,
+            "volume_cm3": 1.731586965796514
+          },
+          {
+            "body": "AZN_C5_idler_pin",
+            "material": "강철",
+            "mass_g": 3.468023765252008,
+            "volume_cm3": 0.44178646691108386
+          }
+        ]
+      },
+      {
+        "component": "FL_knee_link",
+        "mass_g": 193.85310818474449,
+        "bodies": [
+          {
+            "body": "AZN_C4_30T_GT_envelope",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 64.03524240385399,
+            "volume_cm3": 23.893747165617157
+          },
+          {
+            "body": "AZN_C4_knee_shaft",
+            "material": "강철",
+            "mass_g": 37.288191523989575,
+            "volume_cm3": 4.750088092227972
+          },
+          {
+            "body": "AZN_C4_shank_box",
+            "material": "AZN_PETG_TDS_density",
+            "mass_g": 82.2949452994936,
+            "volume_cm3": 65.83595623959488
+          },
+          {
+            "body": "AZN_C5_30T_flange_inner",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 5.117364478703665,
+            "volume_cm3": 1.9094643577252484
+          },
+          {
+            "body": "AZN_C5_30T_flange_outer",
+            "material": "알루미늄 5052 H32",
+            "mass_g": 5.117364478703665,
+            "volume_cm3": 1.9094643577252484
+          }
+        ]
+      },
+      {
+        "component": "FL_foot",
+        "mass_g": 13.797874934566963,
+        "bodies": [
+          {
+            "body": "AZN_C4_TPU_pad",
+            "material": "AZN_TPU_TDS_density",
+            "mass_g": 13.797874934566963,
+            "volume_cm3": 11.30973355292374
+          }
+        ]
+      }
+    ],
+    "timeline_issues": [
+      {
+        "name": "그룹1",
+        "state": 5,
+        "message": ""
+      }
+    ],
+    "params": [
+      {
+        "name": "L_thigh",
+        "expression": "200 mm",
+        "value": 20,
+        "unit": "mm"
+      },
+      {
+        "name": "L_shank",
+        "expression": "200 mm",
+        "value": 20,
+        "unit": "mm"
+      },
+      {
+        "name": "hip_spacing",
+        "expression": "380 mm",
+        "value": 38,
+        "unit": "mm"
+      },
+      {
+        "name": "body_W",
+        "expression": "200 mm",
+        "value": 20,
+        "unit": "mm"
+      },
+      {
+        "name": "body_L",
+        "expression": "300 mm",
+        "value": 30,
+        "unit": "mm"
+      },
+      {
+        "name": "body_H",
+        "expression": "100 mm",
+        "value": 10,
+        "unit": "mm"
+      },
+      {
+        "name": "abad_y",
+        "expression": "45 mm",
+        "value": 4.5,
+        "unit": "mm"
+      },
+      {
+        "name": "abad_x",
+        "expression": "125 mm",
+        "value": 12.5,
+        "unit": "mm"
+      },
+      {
+        "name": "abad_offset",
+        "expression": "75 mm",
+        "value": 7.5,
+        "unit": "mm"
+      },
+      {
+        "name": "leg_y",
+        "expression": "abad_y + abad_offset",
+        "value": 12,
+        "unit": "mm"
+      },
+      {
+        "name": "act_D",
+        "expression": "80 mm",
+        "value": 8,
+        "unit": "mm"
+      },
+      {
+        "name": "act_L",
+        "expression": "44 mm",
+        "value": 4.4,
+        "unit": "mm"
+      },
+      {
+        "name": "flange_BC",
+        "expression": "25 mm",
+        "value": 2.5,
+        "unit": "mm"
+      },
+      {
+        "name": "pilot_D",
+        "expression": "34 mm",
+        "value": 3.4000000000000004,
+        "unit": "mm"
+      },
+      {
+        "name": "htd_p",
+        "expression": "5 mm",
+        "value": 0.5,
+        "unit": "mm"
+      },
+      {
+        "name": "Ts_teeth",
+        "expression": "20",
+        "value": 20,
+        "unit": ""
+      },
+      {
+        "name": "Tl_teeth",
+        "expression": "30",
+        "value": 30,
+        "unit": ""
+      },
+      {
+        "name": "pd_s",
+        "expression": "Ts_teeth * htd_p / PI",
+        "value": 3.183098861837907,
+        "unit": "mm"
+      },
+      {
+        "name": "pd_l",
+        "expression": "Tl_teeth * htd_p / PI",
+        "value": 4.7746482927568605,
+        "unit": "mm"
+      },
+      {
+        "name": "knee_ratio",
+        "expression": "Tl_teeth / Ts_teeth",
+        "value": 1.5,
+        "unit": ""
+      },
+      {
+        "name": "belt_C",
+        "expression": "L_thigh",
+        "value": 20,
+        "unit": "mm"
+      },
+      {
+        "name": "belt_L",
+        "expression": "530 mm",
+        "value": 53,
+        "unit": "mm"
+      },
+      {
+        "name": "belt_w",
+        "expression": "15 mm",
+        "value": 1.5,
+        "unit": "mm"
+      },
+      {
+        "name": "stance_h",
+        "expression": "280 mm",
+        "value": 28,
+        "unit": "mm"
+      },
+      {
+        "name": "crouch_h",
+        "expression": "200 mm",
+        "value": 20,
+        "unit": "mm"
+      },
+      {
+        "name": "foot_D",
+        "expression": "30 mm",
+        "value": 3,
+        "unit": "mm"
+      },
+      {
+        "name": "brg_OD",
+        "expression": "42 mm",
+        "value": 4.2,
+        "unit": "mm"
+      },
+      {
+        "name": "brg_ID",
+        "expression": "30 mm",
+        "value": 3,
+        "unit": "mm"
+      },
+      {
+        "name": "brg_W",
+        "expression": "7 mm",
+        "value": 0.7000000000000001,
+        "unit": "mm"
+      },
+      {
+        "name": "y_hipmot",
+        "expression": "65 mm",
+        "value": 6.5,
+        "unit": "mm"
+      },
+      {
+        "name": "y_belt",
+        "expression": "leg_y",
+        "value": 12,
+        "unit": "mm"
+      },
+      {
+        "name": "y_kneemot",
+        "expression": "139 mm",
+        "value": 13.9,
+        "unit": "mm"
+      },
+      {
+        "name": "plate_t",
+        "expression": "3 mm",
+        "value": 0.30000000000000004,
+        "unit": "mm"
+      },
+      {
+        "name": "fit_brg",
+        "expression": "0.10 mm",
+        "value": 0.010000000000000002,
+        "unit": "mm"
+      },
+      {
+        "name": "clr_M3",
+        "expression": "3.4 mm",
+        "value": 0.34,
+        "unit": "mm"
+      },
+      {
+        "name": "clr_M4",
+        "expression": "4.5 mm",
+        "value": 0.45,
+        "unit": "mm"
+      },
+      {
+        "name": "housing_BC",
+        "expression": "74 mm",
+        "value": 7.4,
+        "unit": "mm"
+      },
+      {
+        "name": "pin_PCD",
+        "expression": "20.4 mm",
+        "value": 2.04,
+        "unit": "mm"
+      },
+      {
+        "name": "pin_D",
+        "expression": "4 mm",
+        "value": 0.4,
+        "unit": "mm"
+      },
+      {
+        "name": "pin_H",
+        "expression": "3.5 mm",
+        "value": 0.35000000000000003,
+        "unit": "mm"
+      },
+      {
+        "name": "act_mount_L",
+        "expression": "40.5 mm",
+        "value": 4.05,
+        "unit": "mm"
+      },
+      {
+        "name": "output_boss_H",
+        "expression": "1.5 mm",
+        "value": 0.15000000000000002,
+        "unit": "mm"
+      },
+      {
+        "name": "output_face_offset",
+        "expression": "3.5 mm",
+        "value": 0.35000000000000003,
+        "unit": "mm"
+      },
+      {
+        "name": "act_ref_output_x",
+        "expression": "29.5 mm",
+        "value": 2.95,
+        "unit": "mm"
+      },
+      {
+        "name": "belt_w_trial",
+        "expression": "belt_w",
+        "value": 1.5,
+        "unit": "mm"
+      },
+      {
+        "name": "y_belt_trial",
+        "expression": "y_belt",
+        "value": 12,
+        "unit": "mm"
+      },
+      {
+        "name": "belt_side_clearance",
+        "expression": "1.5 mm",
+        "value": 0.15000000000000002,
+        "unit": "mm"
+      },
+      {
+        "name": "y_support_trial",
+        "expression": "y_belt + belt_w / 2 + belt_side_clearance + brg_W / 2",
+        "value": 13.25,
+        "unit": "mm"
+      },
+      {
+        "name": "drive_shaft_D_trial",
+        "expression": "12 mm",
+        "value": 1.2000000000000002,
+        "unit": "mm"
+      },
+      {
+        "name": "hip_plate_W_trial",
+        "expression": "28 mm",
+        "value": 2.8000000000000003,
+        "unit": "mm"
+      },
+      {
+        "name": "hip_end_D_trial",
+        "expression": "54 mm",
+        "value": 5.4,
+        "unit": "mm"
+      },
+      {
+        "name": "knee_end_D_trial",
+        "expression": "44 mm",
+        "value": 4.4,
+        "unit": "mm"
+      },
+      {
+        "name": "clearance_trial",
+        "expression": "0.5 mm",
+        "value": 0.05,
+        "unit": "mm"
+      },
+      {
+        "name": "hip_inner_y_trial",
+        "expression": "y_hipmot + act_mount_L + pin_H + clearance_trial - leg_y - belt_side_clearance",
+        "value": -1.1999999999999988,
+        "unit": "mm"
+      },
+      {
+        "name": "hip_outer_y_trial",
+        "expression": "y_support_trial - leg_y - brg_W / 2",
+        "value": 0.8999999999999999,
+        "unit": "mm"
+      },
+      {
+        "name": "knee_brg_OD_trial",
+        "expression": "28 mm",
+        "value": 2.8000000000000003,
+        "unit": "mm"
+      },
+      {
+        "name": "knee_brg_ID_trial",
+        "expression": "12 mm",
+        "value": 1.2000000000000002,
+        "unit": "mm"
+      },
+      {
+        "name": "knee_brg_W_trial",
+        "expression": "8 mm",
+        "value": 0.8,
+        "unit": "mm"
+      },
+      {
+        "name": "shaft_brg_OD_trial",
+        "expression": "21 mm",
+        "value": 2.1,
+        "unit": "mm"
+      },
+      {
+        "name": "shaft_brg_W_trial",
+        "expression": "5 mm",
+        "value": 0.5,
+        "unit": "mm"
+      },
+      {
+        "name": "shank_W_trial",
+        "expression": "28 mm",
+        "value": 2.8000000000000003,
+        "unit": "mm"
+      },
+      {
+        "name": "shank_B_trial",
+        "expression": "22 mm",
+        "value": 2.2,
+        "unit": "mm"
+      },
+      {
+        "name": "shank_wall_trial",
+        "expression": "3 mm",
+        "value": 0.30000000000000004,
+        "unit": "mm"
+      },
+      {
+        "name": "pulley_flange_t_trial",
+        "expression": "1 mm",
+        "value": 0.1,
+        "unit": "mm"
+      },
+      {
+        "name": "pulley_hub_D_trial",
+        "expression": "24 mm",
+        "value": 2.4000000000000004,
+        "unit": "mm"
+      },
+      {
+        "name": "pulley_hub_L_trial",
+        "expression": "5 mm",
+        "value": 0.5,
+        "unit": "mm"
+      },
+      {
+        "name": "idler_D_trial",
+        "expression": "45 mm",
+        "value": 4.5,
+        "unit": "mm"
+      },
+      {
+        "name": "idler_slot_L_trial",
+        "expression": "12 mm",
+        "value": 1.2000000000000002,
+        "unit": "mm"
+      },
+      {
+        "name": "idler_pin_D_trial",
+        "expression": "5 mm",
+        "value": 0.5,
+        "unit": "mm"
+      },
+      {
+        "name": "bracket_W_trial",
+        "expression": "24 mm",
+        "value": 2.4000000000000004,
+        "unit": "mm"
+      },
+      {
+        "name": "bracket_top_trial",
+        "expression": "48 mm",
+        "value": 4.800000000000001,
+        "unit": "mm"
+      },
+      {
+        "name": "foot_H_trial",
+        "expression": "16 mm",
+        "value": 1.6,
+        "unit": "mm"
+      },
+      {
+        "name": "idler_x_trial",
+        "expression": "22.913529873909926 mm",
+        "value": 2.291352987390993,
+        "unit": "mm"
+      },
+      {
+        "name": "belt_envelope_t_trial",
+        "expression": "3.81 mm",
+        "value": 0.381,
+        "unit": "mm"
+      },
+      {
+        "name": "stand_hip_trial",
+        "expression": "acos(stance_h / ( 2 * L_thigh ))",
+        "value": 0.7953988301841436,
+        "unit": "deg"
+      },
+      {
+        "name": "stand_knee_trial",
+        "expression": "-2 * stand_hip_trial",
+        "value": -1.5907976603682872,
+        "unit": "deg"
+      },
+      {
+        "name": "output_phase_trial",
+        "expression": "29.619538694349 deg",
+        "value": 0.5169584731382524,
+        "unit": "deg"
+      },
+      {
+        "name": "abad_adapter_x_trial",
+        "expression": "143.5 mm + pin_H + clearance_trial",
+        "value": 14.750000000000002,
+        "unit": "mm"
+      },
+      {
+        "name": "cross_W_trial",
+        "expression": "6 mm",
+        "value": 0.6000000000000001,
+        "unit": "mm"
+      },
+      {
+        "name": "abad_output_x_trial",
+        "expression": "143.5 mm",
+        "value": 14.350000000000001,
+        "unit": "mm"
+      },
+      {
+        "name": "abad_6_phase_trial",
+        "expression": "-120.38046130564777 deg",
+        "value": -2.1010354048531856,
+        "unit": "deg"
+      },
+      {
+        "name": "abad_3_phase_trial",
+        "expression": "-150.38046130565104 deg",
+        "value": -2.6246341804515416,
+        "unit": "deg"
+      },
+      {
+        "name": "shank_y_trial",
+        "expression": "hip_outer_y_trial + knee_brg_W_trial + shank_B_trial / 2",
+        "value": 2.8,
+        "unit": "mm"
+      }
+    ]
+  }
+}

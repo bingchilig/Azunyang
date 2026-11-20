@@ -1,0 +1,1 @@
+{"created_occurrence": "FL_abad_link:1", "origins": ["AZN_C_FL_abad_pivot", "AZN_C_FL_hip_target", "AZN_C_FL_knee_target"], "joint": "FL_abad_joint", "one": "FL_abad_link:1", "two": "base_link:1", "computed": true, "health": 0, "warning": "", "timeline": 21, "hip_joint_timeline": 22}

@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Azunyang 로봇개 설계 보고서 v0.1 (2026-11-12)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#ffffff; --fg:#1d232b; --muted:#5b6672; --card:#f4f6f9; --line:#d5dbe3; --accent:#2563eb;
+  --al:#8fa3b8; --petg:#f59e0b; --buy:#10b981; --motor:#475569; --tpu:#a855f7; --est:#d0368a;
+  --pwr:#dc2626; --can:#2563eb; --dim:#64748b; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1419; --fg:#e6edf3; --muted:#9aa7b4; --card:#161d26; --line:#2b3642; --accent:#60a5fa;
+    --al:#7f93a8; --petg:#fbbf24; --buy:#34d399; --motor:#94a3b8; --tpu:#c084fc; --est:#f472b6;
+    --pwr:#f87171; --can:#60a5fa; --dim:#94a3b8; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1419; --fg:#e6edf3; --muted:#9aa7b4; --card:#161d26; --line:#2b3642; --accent:#60a5fa;
+  --al:#7f93a8; --petg:#fbbf24; --buy:#34d399; --motor:#94a3b8; --tpu:#c084fc; --est:#f472b6;
+  --pwr:#f87171; --can:#60a5fa; --dim:#94a3b8; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+a{color:var(--accent)}
+.layout{display:flex;min-height:100vh}
+nav.toc{position:sticky;top:0;height:100vh;overflow:auto;width:250px;flex:0 0 250px;border-right:1px solid var(--line);padding:16px 14px;background:var(--card);font-size:13.5px}
+nav.toc h2{font-size:15px;margin:0 0 8px}
+nav.toc ol{padding-left:18px;margin:0}
+nav.toc li{margin:3px 0}
+nav.toc a{text-decoration:none;color:var(--fg)}
+nav.toc a:hover{color:var(--accent)}
+main{flex:1;min-width:0;max-width:1080px;padding:20px 28px 80px}
+h1{font-size:26px;margin:4px 0 4px}
+h2.sec{font-size:21px;border-bottom:2px solid var(--accent);padding-bottom:4px;margin-top:44px}
+h3{font-size:17px;margin-top:26px}
+.sub{color:var(--muted);font-size:13px}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:13px}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.card h4{margin:0 0 6px;font-size:14px;color:var(--muted);font-weight:600}
+.big{font-size:19px;font-weight:700}
+figure{margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+figure svg{width:100%;height:auto;max-height:640px;display:block}
+figcaption{font-size:13px;color:var(--muted);margin-top:8px}
+figcaption b{color:var(--fg)}
+.chartbox{position:relative;height:340px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:5px 7px;vertical-align:top;text-align:left}
+th{background:var(--card)}
+.tw{overflow-x:auto}
+.est{color:var(--est)}
+.tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:0 6px;border:1px solid var(--line);margin-left:3px}
+.t-est{color:var(--est);border-color:var(--est)}
+.t-na{color:var(--warn);border-color:var(--warn)}
+.t-src{color:var(--ok);border-color:var(--ok)}
+.note{font-size:12.5px;color:var(--muted)}
+.formula{font-family:Consolas,"D2Coding",monospace;font-size:12.5px;background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:8px 10px;white-space:pre-wrap;margin-top:8px}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;margin:6px 0}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
+ul.check{list-style:none;padding-left:0}
+ul.check li:before{content:"☐ ";color:var(--accent)}
+code{font-family:Consolas,"D2Coding",monospace;font-size:12.5px;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+/* SVG styles */
+svg .s{stroke:var(--fg);fill:none;stroke-width:1}
+svg .s2{stroke:var(--fg);fill:none;stroke-width:2}
+svg .al{fill:var(--al);fill-opacity:.45;stroke:var(--fg);stroke-width:1}
+svg .mot{fill:var(--motor);fill-opacity:.5;stroke:var(--fg);stroke-width:1}
+svg .petg{fill:var(--petg);fill-opacity:.45;stroke:var(--fg);stroke-width:1}
+svg .buy{fill:var(--buy);fill-opacity:.4;stroke:var(--fg);stroke-width:1}
+svg .tpu{fill:var(--tpu);fill-opacity:.55;stroke:var(--fg);stroke-width:1}
+svg .estl{stroke:var(--est);stroke-dasharray:5 3;fill:none;stroke-width:1.2}
+svg .estf{fill:var(--est);fill-opacity:.10;stroke:var(--est);stroke-dasharray:5 3;stroke-width:1.2}
+svg .dim{stroke:var(--dim);stroke-width:.8;fill:none}
+svg .esth{fill:var(--est);fill-opacity:.45;stroke:var(--est);stroke-width:.4}
+svg .estt{stroke:var(--est);stroke-dasharray:2 1.2;fill:none;stroke-width:.5}
+svg .ax{stroke:var(--dim);stroke-width:.7;stroke-dasharray:8 3 2 3;fill:none}
+svg .gnd{stroke:var(--dim);stroke-width:1.2;fill:none}
+svg .pw{stroke:var(--pwr);fill:none}
+svg .cn{stroke:var(--can);fill:none}
+svg .box{fill:var(--bg);stroke:var(--fg);stroke-width:1.2}
+svg .boxa{fill:var(--accent);fill-opacity:.10;stroke:var(--accent);stroke-width:1.2}
+svg .boxp{fill:var(--pwr);fill-opacity:.10;stroke:var(--pwr);stroke-width:1.2}
+svg .boxg{fill:var(--buy);fill-opacity:.12;stroke:var(--buy);stroke-width:1.2}
+svg .boxo{fill:var(--petg);fill-opacity:.14;stroke:var(--petg);stroke-width:1.2}
+svg .boxm{fill:var(--motor);fill-opacity:.18;stroke:var(--fg);stroke-width:1.2}
+svg .t{fill:var(--fg);font-family:inherit}
+svg .tm{fill:var(--muted)}
+svg .te{fill:var(--est)}
+svg .tp{fill:var(--pwr)}
+svg .tc{fill:var(--can)}
+svg .mk{fill:var(--dim)}
+svg .mkp{fill:var(--pwr)}
+svg .mkc{fill:var(--can)}
+svg .mkf{fill:var(--fg)}
+@media (max-width:860px){
+  .layout{display:block}
+  nav.toc{position:static;width:auto;height:auto;border-right:0;border-bottom:1px solid var(--line)}
+  main{padding:14px 12px 60px}
+  .chartbox{height:300px}
+}
+@media print{nav.toc{display:none} .btn{display:none}}
+</style>
+</head>
+<body>
+<!-- 전역 마커 정의 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arF" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mkf" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mkp" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mkc" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+</svg>
+
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <h2>목차</h2>
+  <ol>
+    <li><a href="#s1">한눈에 보기</a></li>
+    <li><a href="#s2">전체 구조</a></li>
+    <li><a href="#s3">기구 설계</a>
+      <ol style="padding-left:14px;font-size:12.5px">
+        <li><a href="#s3-1">3면도</a></li><li><a href="#s3-2">다리 상세</a></li><li><a href="#s3-3">작업 공간</a></li>
+        <li><a href="#s3-4">벨트 구동</a></li><li><a href="#s3-5">플랜지 인터페이스</a></li><li><a href="#s3-6">소재 배치</a></li><li><a href="#s3-7">무게 예산</a></li>
+      </ol></li>
+    <li><a href="#s4">성능 검증</a></li>
+    <li><a href="#s5">전장 설계</a></li>
+    <li><a href="#s6">소프트웨어 구조</a></li>
+    <li><a href="#s7">Fusion 설계 가이드</a></li>
+    <li><a href="#s8">다음 계획 (로드맵)</a></li>
+    <li><a href="#s9">부품 목록과 예산</a></li>
+    <li><a href="#s10">리스크와 미확인 항목</a></li>
+    <li><a href="#src">출처</a></li>
+  </ol>
+  <p style="margin-top:14px"><button class="btn" id="themeBtn" type="button">라이트/다크 전환</button></p>
+  <p class="note">표기: <span class="tag t-src">출처</span> 출처 있음 · <span class="tag t-est">추정</span> 가정·계산 · <span class="tag t-na">확인 불가</span><br>그림에서 <span class="est">분홍 점선</span> = 추정 또는 확인 필요</p>
+</nav>
+
+<main>
+<h1>Azunyang 로봇개 설계 보고서 <span class="sub">v0.1 · 2026-11-12</span></h1>
+<p class="sub">12자유도 사족보행 · SteadyWin GIM6010-8 + GDS68 + DE · MIT Mini Cheetah 참고. 가격은 2026-11-12 기준이고 환율은 1달러 = 1,340원(1,337.5원 반올림)입니다. 그림 안의 모든 길이 단위는 mm입니다.</p>
+
+<!-- ============ 1 ============ -->
+<h2 class="sec" id="s1">1. 한눈에 보기</h2>
+<div class="grid g3">
+  <div class="card"><h4>크기 (L × W × H)</h4><div class="big">460 × 358 × 345 mm</div><div class="note">그림 3~5의 배치로 계산했습니다 <span class="tag t-est">추정</span>. 무릎을 안쪽(&gt;&lt;)으로 배치한 기준이고, Mini Cheetah처럼 같은 방향(&gt;&gt;)이면 길이가 약 563mm로 늘어납니다.</div></div>
+  <div class="card"><h4>무게</h4><div class="big">약 7.96 kg</div><div class="note">액추에이터 4.66kg(제조사 388g × 12)에 나머지 항목 추정치를 더한 값입니다 (그림 11).</div></div>
+  <div class="card"><h4>자유도</h4><div class="big">12 DOF</div><div class="note">다리마다 외전(abad) · 고관절(hip) · 무릎(knee)</div></div>
+  <div class="card"><h4>액추에이터</h4><div class="big">GIM6010-8 ×12 (+예비 2)</div><div class="note">8:1, 정격 5Nm / 스톨 11Nm(제조사), 순정 드라이버 24A에서 약 11Nm 실측 사례 있음 (<a href="https://hackaday.io/project/202366-the-unnamed-spider-bot/log/239789-steadywin-gim6010-8-stock-controller-vs-odrive-vs-tinymovr">Jeremy</a>), 388g, Ø80×40</div></div>
+  <div class="card"><h4>제어</h4><div class="big">Pi 5 + 2-CH CAN FD HAT</div><div class="note">CAN 1Mbps, 버스 2개 × 6축, 250Hz로 시작(버스 부하 37.5%). ROS2 + CHAMP</div></div>
+  <div class="card"><h4>전원</h4><div class="big">6S LiPo 5000mAh</div><div class="note">111Wh(공칭), 사용 시간 36~53분 <span class="tag t-est">추정</span>. 60A MIDI 퓨즈와 접촉기식 E-stop</div></div>
+  <div class="card"><h4>예산</h4><div class="big">약 381만 원</div><div class="note">1단계 65 + 2단계 72 + 3단계 244만 원 <span class="tag t-est">일부 추정</span>. 3단계 액추에이터를 분할 결제하면 약 340만 원</div></div>
+  <div class="card"><h4>목표</h4><div class="big">보행·트롯 → 10cm 점프</div><div class="note">무릎에 1.5:1 벨트를 넣는 전제로 성립합니다 (4장)</div></div>
+</div>
+
+<h3>확정된 핵심 결정 5개</h3>
+<div class="tw"><table>
+<tr><th>#</th><th>결정</th><th>한 줄 이유</th></tr>
+<tr><td>1</td><td>일체형 GIM6010-8 + GDS68 + DE</td><td>12축 무게 4.66kg라 9kg급에 들어갑니다(자작 OpenQDD는 11.2kg). DE가 있으면 전원을 켜자마자 출력축 각도를 알 수 있습니다(사용자 실측 2건).</td></tr>
+<tr><td>2</td><td>무릎은 고관절 동축 + HTD5M 1.5:1 벨트</td><td>9kg 트롯에서 무릎 RMS 토크가 4.95Nm(정격의 99%)에서 모터 기준 3.47Nm로 내려갑니다 (그림 13).</td></tr>
+<tr><td>3</td><td>상퇴·하퇴 0.20 / 0.20m</td><td>Mini Cheetah 모델값 0.209 / 0.195m(<a href="https://github.com/mit-biomimetics/Cheetah-Software/blob/master/common/include/Dynamics/MiniCheetah.h">MiniCheetah.h</a>)에 맞춘 크기입니다.</td></tr>
+<tr><td>4</td><td>CAN 버스 2개 × 6축, 250Hz로 시작</td><td>1Mbps에서 버스 부하 37.5%로 50% 기준 안에 들어갑니다 (그림 17).</td></tr>
+<tr><td>5</td><td>6S LiPo + 접촉기식 E-stop + 60A 퓨즈</td><td>점프할 때 순간 약 50A가 흐를 것으로 추정되고, 비상시 동력을 물리적으로 끊을 수 있어야 합니다.</td></tr>
+</table></div>
+
+<h3>아직 정해지지 않은 결정</h3>
+<div class="tw"><table>
+<tr><th>결정</th><th>선택지</th><th>영향</th></tr>
+<tr><td>무릎 방향</td><td>안쪽 &gt;&lt; (이 보고서 기본) / MC식 같은 방향 &gt;&gt;</td><td>길이 460mm 대 약 563mm. 보행 특성과 제어 코드 설정에 영향</td></tr>
+<tr><td>관절 가동 범위</td><td>무릎 최대 굽힘 150°를 가정 <span class="tag t-est">추정</span></td><td>작업 공간(그림 7)과 간섭 확인</td></tr>
+<tr><td>하퇴 소재</td><td>PETG 출력 / 카본 튜브 + 출력 끝단 (TOPS 방식)</td><td>다리 관성, 강성</td></tr>
+<tr><td>배터리 용량</td><td>5000 / 6000mAh</td><td>사용 시간 36~53분 대 43~64분 (추정), 무게</td></tr>
+<tr><td>프리차지</td><td>저항 + 수동 / mjbots power_dist ($149)</td><td>접점 손상과 돌입전류</td></tr>
+<tr><td>제어 주기 확장</td><td>2버스 250Hz 유지 / Teensy 4.1로 3버스 500Hz</td><td>점프 단계의 제어 품질</td></tr>
+<tr><td>액추에이터 구매 방식</td><td>하루 1개씩 분할 결제 / 한 번에</td><td>14개 기준 약 217만 원 대 약 249만 원</td></tr>
+</table></div>
+
+<!-- ============ 2 ============ -->
+<h2 class="sec" id="s2">2. 전체 구조</h2>
+<figure>
+<svg viewBox="0 0 940 470" role="img" aria-label="시스템 블록도">
+  <!-- columns -->
+  <rect class="boxp" x="15" y="40" width="200" height="380" rx="12"/>
+  <text class="t" x="115" y="62" text-anchor="middle" font-size="15" font-weight="700">전원</text>
+  <rect class="box" x="35" y="80" width="160" height="44" rx="8"/><text class="t" x="115" y="100" text-anchor="middle" font-size="13">6S LiPo 5000mAh</text><text class="tm" x="115" y="116" text-anchor="middle" font-size="11">22.2V (18~25.2V)</text>
+  <rect class="box" x="35" y="145" width="160" height="62" rx="8"/><text class="t" x="115" y="165" text-anchor="middle" font-size="13">보호 회로</text><text class="tm" x="115" y="181" text-anchor="middle" font-size="11">XT90-S · E-stop · 접촉기</text><text class="tm" x="115" y="196" text-anchor="middle" font-size="11">60A MIDI 퓨즈</text>
+  <rect class="box" x="35" y="228" width="160" height="44" rx="8"/><text class="t" x="115" y="248" text-anchor="middle" font-size="13">24V 분배 (다리별 XT30)</text><text class="tm" x="115" y="264" text-anchor="middle" font-size="11">메인 12AWG · 분기 14AWG</text>
+  <rect class="box" x="35" y="293" width="160" height="44" rx="8"/><text class="t" x="115" y="313" text-anchor="middle" font-size="13">DC-DC 24V→5V 5A</text><text class="tm" x="115" y="329" text-anchor="middle" font-size="11">Pi 5 전원</text>
+  <path class="pw" stroke-width="2" d="M115 124 V145" marker-end="url(#arP)"/><path class="pw" stroke-width="2" d="M115 207 V228" marker-end="url(#arP)"/><path class="pw" stroke-width="2" d="M115 272 V293" marker-end="url(#arP)"/>
+
+  <rect class="boxa" x="250" y="40" width="210" height="380" rx="12"/>
+  <text class="t" x="355" y="62" text-anchor="middle" font-size="15" font-weight="700">제어</text>
+  <rect class="box" x="270" y="80" width="170" height="62" rx="8"/><text class="t" x="355" y="100" text-anchor="middle" font-size="13">Raspberry Pi 5 8GB</text><text class="tm" x="355" y="116" text-anchor="middle" font-size="11">ROS2 + CHAMP</text><text class="tm" x="355" y="131" text-anchor="middle" font-size="11">하드웨어 인터페이스(직접 작성)</text>
+  <rect class="box" x="270" y="165" width="170" height="52" rx="8"/><text class="t" x="355" y="186" text-anchor="middle" font-size="13">2-CH CAN FD HAT</text><text class="tm" x="355" y="203" text-anchor="middle" font-size="11">MCP2518FD · can0 / can1</text>
+  <rect class="box" x="270" y="240" width="170" height="44" rx="8"/><text class="t" x="355" y="260" text-anchor="middle" font-size="13">IMU BNO085</text><text class="tm" x="355" y="276" text-anchor="middle" font-size="11">I2C / UART-RVC</text>
+  <rect class="box" x="270" y="305" width="170" height="44" rx="8"/><text class="t" x="355" y="325" text-anchor="middle" font-size="13">텔레옵 (게임패드)</text><text class="tm" x="355" y="341" text-anchor="middle" font-size="11">Wi-Fi / BT</text>
+  <path class="s" d="M355 142 V165" marker-end="url(#arF)"/><path class="s" d="M355 240 V217" marker-end="url(#arF)"/><path class="s" d="M355 305 V284" marker-end="url(#arF)"/>
+
+  <rect class="boxm" x="495" y="40" width="200" height="380" rx="12"/>
+  <text class="t" x="595" y="62" text-anchor="middle" font-size="15" font-weight="700">액추에이터 ×12</text>
+  <rect class="box" x="515" y="80" width="160" height="120" rx="8"/><text class="t" x="595" y="102" text-anchor="middle" font-size="13">can0: 앞다리</text><text class="tm" x="595" y="122" text-anchor="middle" font-size="11">FL 1·2·3 / FR 4·5·6</text><text class="tm" x="595" y="140" text-anchor="middle" font-size="11">GIM6010-8 + GDS68 + DE</text><text class="tm" x="595" y="158" text-anchor="middle" font-size="11">MIT 모드, 출력축 기준</text><text class="tm" x="595" y="176" text-anchor="middle" font-size="11">종단 120Ω: HAT + ID 6</text>
+  <rect class="box" x="515" y="220" width="160" height="120" rx="8"/><text class="t" x="595" y="242" text-anchor="middle" font-size="13">can1: 뒷다리</text><text class="tm" x="595" y="262" text-anchor="middle" font-size="11">RL 7·8·9 / RR 10·11·12</text><text class="tm" x="595" y="280" text-anchor="middle" font-size="11">GIM6010-8 + GDS68 + DE</text><text class="tm" x="595" y="298" text-anchor="middle" font-size="11">기본 500k → 1M으로 변경</text><text class="tm" x="595" y="316" text-anchor="middle" font-size="11">종단 120Ω: HAT + ID 12</text>
+
+  <rect class="boxo" x="730" y="40" width="195" height="380" rx="12"/>
+  <text class="t" x="827" y="62" text-anchor="middle" font-size="15" font-weight="700">기구</text>
+  <rect class="box" x="748" y="80" width="160" height="62" rx="8"/><text class="t" x="828" y="100" text-anchor="middle" font-size="13">몸통</text><text class="tm" x="828" y="116" text-anchor="middle" font-size="11">Al 5052 판금 외주</text><text class="tm" x="828" y="131" text-anchor="middle" font-size="11">+ PETG 브래킷·커버</text>
+  <rect class="box" x="748" y="160" width="160" height="80" rx="8"/><text class="t" x="828" y="180" text-anchor="middle" font-size="13">다리 ×4</text><text class="tm" x="828" y="196" text-anchor="middle" font-size="11">상퇴 200 / 하퇴 200</text><text class="tm" x="828" y="211" text-anchor="middle" font-size="11">무릎 HTD5M 20T→30T</text><text class="tm" x="828" y="226" text-anchor="middle" font-size="11">벨트 525mm, 1.5:1</text>
+  <rect class="box" x="748" y="258" width="160" height="44" rx="8"/><text class="t" x="828" y="278" text-anchor="middle" font-size="13">발 (TPU 95A)</text><text class="tm" x="828" y="294" text-anchor="middle" font-size="11">Ø30 가정 (추정)</text>
+  <rect class="box" x="748" y="320" width="160" height="80" rx="8"/><text class="t" x="828" y="340" text-anchor="middle" font-size="13">설계 · 시뮬레이션</text><text class="tm" x="828" y="356" text-anchor="middle" font-size="11">Fusion → ACDC4Robot</text><text class="tm" x="828" y="371" text-anchor="middle" font-size="11">→ MJCF → MuJoCo</text>
+
+  <!-- links -->
+  <path class="pw" stroke-width="2.2" d="M195 250 H230 V120 H515" marker-end="url(#arP)"/>
+  <path class="pw" stroke-width="2.2" d="M230 250 V430 H500 V280 H515" marker-end="url(#arP)"/>
+  <path class="pw" stroke-width="1.6" d="M195 315 H262 V111 H270" marker-end="url(#arP)"/>
+  <path class="cn" stroke-width="2.2" d="M440 182 H515" marker-end="url(#arC)"/>
+  <path class="cn" stroke-width="2.2" d="M440 200 H480 V262 H515" marker-end="url(#arC)"/>
+  <path class="s" stroke-width="1.6" stroke-dasharray="6 4" d="M675 140 H748" marker-end="url(#arF)"/>
+  <path class="s" stroke-width="1.6" stroke-dasharray="6 4" d="M675 280 H720 V200 H748" marker-end="url(#arF)"/>
+  <!-- legend -->
+  <line class="pw" stroke-width="2.2" x1="20" y1="455" x2="50" y2="455"/><text class="t" x="56" y="459" font-size="12">전원 24V</text>
+  <line class="cn" stroke-width="2.2" x1="140" y1="455" x2="170" y2="455"/><text class="t" x="176" y="459" font-size="12">CAN 1Mbps</text>
+  <line class="s" stroke-width="1.6" stroke-dasharray="6 4" x1="270" y1="455" x2="300" y2="455"/><text class="t" x="306" y="459" font-size="12">기계 연결 (토크)</text>
+</svg>
+<figcaption><b>그림 1. 시스템 블록도</b> (비율 아님). 전원(빨강) · CAN(파랑) · 기계 연결(점선)을 구분했습니다. CAN을 다리 앞/뒤로 나눈 근거는 그림 17의 대역폭 계산입니다.</figcaption>
+</figure>
+
+<h3>좌표계와 관절 이름 규칙</h3>
+<figure>
+<svg viewBox="-330 -230 660 460" role="img" aria-label="좌표계와 관절 이름">
+  <rect class="al" x="-150" y="-100" width="300" height="200" rx="10"/>
+  <text class="t" x="0" y="5" text-anchor="middle" font-size="16" font-weight="700">base_link</text>
+  <text class="tm" x="0" y="25" text-anchor="middle" font-size="12">원점 = 몸통 중심 (고관절 높이)</text>
+  <!-- legs -->
+  <g font-size="13">
+    <circle class="mot" cx="190" cy="-120" r="34"/><text class="t" x="190" y="-115" text-anchor="middle" font-weight="700">FL</text>
+    <circle class="mot" cx="190" cy="120" r="34"/><text class="t" x="190" y="125" text-anchor="middle" font-weight="700">FR</text>
+    <circle class="mot" cx="-190" cy="-120" r="34"/><text class="t" x="-190" y="-115" text-anchor="middle" font-weight="700">RL</text>
+    <circle class="mot" cx="-190" cy="120" r="34"/><text class="t" x="-190" y="125" text-anchor="middle" font-weight="700">RR</text>
+    <text class="tc" x="235" y="-150" font-size="12">ID 1·2·3</text>
+    <text class="tc" x="235" y="160" font-size="12">ID 4·5·6</text>
+    <text class="tc" x="-300" y="-150" font-size="12">ID 7·8·9</text>
+    <text class="tc" x="-310" y="160" font-size="12">ID 10·11·12</text>
+  </g>
+  <!-- axes -->
+  <g transform="translate(-40,195)">
+    <line class="s2" x1="0" y1="0" x2="60" y2="0" marker-end="url(#arF)"/><text class="t" x="66" y="5" font-size="13">+x 앞</text>
+    <line class="s2" x1="0" y1="0" x2="0" y2="-60" marker-end="url(#arF)"/><text class="t" x="6" y="-58" font-size="13">+y 왼쪽</text>
+    <circle class="s2" cx="0" cy="0" r="6"/><circle class="mkf" cx="0" cy="0" r="2"/><text class="t" x="-12" y="22" font-size="13">+z 위 (화면 밖)</text>
+  </g>
+  <!-- rotation hints -->
+  <path class="cn" stroke-width="1.5" d="M120,-60 a22,22 0 1,1 0,40" marker-end="url(#arC)"/><text class="tc" x="60" y="-70" font-size="12">abad: +x축 오른손 법칙</text>
+  <path class="cn" stroke-width="1.5" d="M100,40 a22,22 0 1,0 40,0" marker-end="url(#arC)"/><text class="tc" x="60" y="80" font-size="12">hip·knee: +y축 오른손 법칙</text>
+  <text class="tm" x="0" y="-210" text-anchor="middle" font-size="12">위에서 본 그림 · ROS REP-103 (x 앞, y 왼쪽, z 위)</text>
+</svg>
+<figcaption><b>그림 2. 좌표계와 다리 이름</b> (비율 아님). 관절 이름은 <code>{FL,FR,RL,RR}_{abad,hip,knee}_joint</code>입니다. 0점은 다리를 곧게 내린 자세로 둡니다 <span class="tag t-est">제안</span>. CHAMP의 이름 매핑은 joints.yaml에서 맞춥니다.</figcaption>
+</figure>
+
+<div class="tw"><table>
+<tr><th>다리</th><th>관절</th><th>CAN ID</th><th>버스</th><th>회전축</th><th>모터 + → 관절 + 부호 <span class="tag t-est">조립 후 확인</span></th><th>비고</th></tr>
+<tr><td rowspan="3">FL</td><td>abad</td><td>1</td><td rowspan="6">can0</td><td>+x</td><td>+1 (출력면이 +x를 향할 때)</td><td></td></tr>
+<tr><td>hip</td><td>2</td><td>+y</td><td>+1 (출력면 +y)</td><td></td></tr>
+<tr><td>knee</td><td>3</td><td>+y</td><td>벨트 결합 (아래 식)</td><td>θ<sub>km</sub> = q<sub>hip</sub> + 1.5·q<sub>knee</sub></td></tr>
+<tr><td rowspan="3">FR</td><td>abad</td><td>4</td><td>+x</td><td>+1</td><td></td></tr>
+<tr><td>hip</td><td>5</td><td>+y</td><td>−1 (출력면 −y, 좌우 대칭)</td><td></td></tr>
+<tr><td>knee</td><td>6</td><td>+y</td><td>벨트 결합, 부호 −1</td><td><b>120Ω ON</b></td></tr>
+<tr><td rowspan="3">RL</td><td>abad</td><td>7</td><td rowspan="6">can1</td><td>+x</td><td>−1 (출력면 −x)</td><td></td></tr>
+<tr><td>hip</td><td>8</td><td>+y</td><td>+1</td><td></td></tr>
+<tr><td>knee</td><td>9</td><td>+y</td><td>벨트 결합</td><td></td></tr>
+<tr><td rowspan="3">RR</td><td>abad</td><td>10</td><td>+x</td><td>−1</td><td></td></tr>
+<tr><td>hip</td><td>11</td><td>+y</td><td>−1</td><td></td></tr>
+<tr><td>knee</td><td>12</td><td>+y</td><td>벨트 결합, 부호 −1</td><td><b>120Ω ON</b></td></tr>
+</table></div>
+<p class="note">노드 ID는 0~63이고 출고 기본값은 0입니다. 같은 버스에 연결하기 전에 한 개씩 ID를 설정하세요(odrivetool <code>axis0.config.can.node_id</code> 또는 CAN 명령 0x006 · <a href="https://14180476.s21i.faiusr.com/61/ABUIABA9GAAghZu6wQYo7L6lVw.pdf">매뉴얼 rev2.2</a> p.27~28, 46). 부호는 이 보고서의 장착 방향을 가정한 값이라 실물에서 확인해야 합니다.</p>
+<div class="formula">무릎 벨트 결합 (열린 벨트, 20T→30T, 효율 1로 가정):
+  모터 각  θ_hip_motor = q_hip ,  θ_knee_motor = q_hip + 1.5·q_knee
+  관절 토크 τ_q = Jᵀ·τ_m  →  τ_q_hip = τ_hm + τ_km ,  τ_q_knee = 1.5·τ_km
+  역변환  τ_km = τ_q_knee / 1.5 ,  τ_hm = τ_q_hip − τ_q_knee / 1.5
+→ 하드웨어 인터페이스에서 이 변환을 해 주면 CHAMP는 일반 3관절 다리로 다룰 수 있습니다.</div>
+
+<!-- ============ 3 ============ -->
+<h2 class="sec" id="s3">3. 기구 설계</h2>
+<p class="note">그림 3~9는 <b>실제 비율(1 단위 = 1mm)</b>입니다. 분홍 점선은 형상이 정해지지 않았거나 추정한 치수입니다. 배치 기준값: 외전 축 y = ±45, 외전 오프셋 75(다리 중심면 y = ±120), 외전 모터 중심 x = ±125, 고관절 x = ±190. y 방향 순서는 고관절 모터 65~105 → 상퇴 안판 105~108 → 벨트 108~132 → 바깥판·6806ZZ 132~139 → 무릎 모터 139~179입니다 <span class="tag t-est">설계 제안</span>.</p>
+
+<h3 id="s3-1">3.1 외형 3면도</h3>
+<figure>
+<svg viewBox="-340 -265 680 530" role="img" aria-label="위에서 본 그림">
+  <!-- body -->
+  <rect class="al" x="-150" y="-100" width="300" height="200" rx="8"/>
+  <rect class="estf" x="-80" y="-25" width="160" height="50" rx="4"/><text class="te" x="0" y="5" text-anchor="middle" font-size="11">배터리 (치수 추정)</text>
+  <line class="ax" x1="-160" y1="-45" x2="160" y2="-45"/><line class="ax" x1="-160" y1="45" x2="160" y2="45"/>
+  <text class="tm" x="-98" y="-50" font-size="10">외전 축 y=+45</text><text class="tm" x="-98" y="58" font-size="10">외전 축 y=−45</text>
+  <!-- abad motors -->
+  <rect class="mot" x="105" y="-85" width="40" height="80"/><rect class="mot" x="105" y="5" width="40" height="80"/>
+  <rect class="mot" x="-145" y="-85" width="40" height="80"/><rect class="mot" x="-145" y="5" width="40" height="80"/>
+  <!-- hip stacks left -->
+  <g id="stackL">
+    <rect class="mot" x="150" y="-105" width="80" height="40"/>
+    <rect class="al" x="150" y="-108" width="80" height="3"/>
+    <rect class="al" x="150" y="-139" width="80" height="7"/>
+    <rect class="mot" x="150" y="-179" width="80" height="40"/>
+  </g>
+  <rect class="mot" x="150" y="65" width="80" height="40"/><rect class="al" x="150" y="105" width="80" height="3"/><rect class="al" x="150" y="132" width="80" height="7"/><rect class="mot" x="150" y="139" width="80" height="40"/>
+  <rect class="mot" x="-230" y="-105" width="80" height="40"/><rect class="al" x="-230" y="-108" width="80" height="3"/><rect class="al" x="-230" y="-139" width="80" height="7"/><rect class="mot" x="-230" y="-179" width="80" height="40"/>
+  <rect class="mot" x="-230" y="65" width="80" height="40"/><rect class="al" x="-230" y="105" width="80" height="3"/><rect class="al" x="-230" y="132" width="80" height="7"/><rect class="mot" x="-230" y="139" width="80" height="40"/>
+  <!-- thigh projections (to knee) -->
+  <rect class="al" x="32" y="-132" width="198" height="24" rx="12" fill-opacity=".25"/>
+  <rect class="al" x="32" y="108" width="198" height="24" rx="12" fill-opacity=".25"/>
+  <rect class="al" x="-230" y="-132" width="198" height="24" rx="12" fill-opacity=".25"/>
+  <rect class="al" x="-230" y="108" width="198" height="24" rx="12" fill-opacity=".25"/>
+  <!-- feet -->
+  <circle class="tpu" cx="190" cy="-120" r="15"/><circle class="tpu" cx="190" cy="120" r="15"/><circle class="tpu" cx="-190" cy="-120" r="15"/><circle class="tpu" cx="-190" cy="120" r="15"/>
+  <!-- knees -->
+  <circle class="s2" cx="47.2" cy="-120" r="5"/><circle class="s2" cx="47.2" cy="120" r="5"/><circle class="s2" cx="-47.2" cy="-120" r="5"/><circle class="s2" cx="-47.2" cy="120" r="5"/>
+  <!-- abad brackets (shape TBD) -->
+  <rect class="estl" x="144" y="-185" width="92" height="190" rx="10"/><rect class="estl" x="144" y="-5" width="92" height="190" rx="10"/>
+  <rect class="estl" x="-236" y="-185" width="92" height="190" rx="10"/><rect class="estl" x="-236" y="-5" width="92" height="190" rx="10"/>
+  <!-- labels -->
+  <text class="t" x="190" y="-190" text-anchor="middle" font-size="12" font-weight="700">FL</text><text class="t" x="190" y="200" text-anchor="middle" font-size="12" font-weight="700">FR</text>
+  <text class="t" x="-190" y="-190" text-anchor="middle" font-size="12" font-weight="700">RL</text><text class="t" x="-190" y="200" text-anchor="middle" font-size="12" font-weight="700">RR</text>
+  <text class="te" x="240" y="-150" font-size="10">외전 브래킷(형상 미정)</text>
+  <!-- dims -->
+  <path class="dim" d="M-190,-222 H190" marker-start="url(#ar)" marker-end="url(#ar)"/><path class="dim" d="M-190,-228 V-200 M190,-228 V-200"/>
+  <text class="t" x="0" y="-227" text-anchor="middle" font-size="12">hip_spacing 380</text>
+  <path class="dim" d="M-230,-248 H230" marker-start="url(#ar)" marker-end="url(#ar)"/><path class="dim" d="M-230,-254 V-230 M230,-254 V-230"/>
+  <text class="t" x="0" y="-253" text-anchor="middle" font-size="12">전체 길이 460 (추정)</text>
+  <path class="dim" d="M300,-179 V179" marker-start="url(#ar)" marker-end="url(#ar)"/><path class="dim" d="M240,-179 H306 M240,179 H306"/>
+  <text class="t" x="306" y="4" font-size="12" transform="rotate(90 306 4)" text-anchor="middle">전체 폭 358 (추정)</text>
+  <path class="dim" d="M-275,-100 V100" marker-start="url(#ar)" marker-end="url(#ar)"/><path class="dim" d="M-281,-100 H-150 M-281,100 H-150"/>
+  <text class="t" x="-282" y="4" font-size="11" transform="rotate(-90 -282 4)" text-anchor="middle">body_W 200</text>
+  <path class="dim" d="M120,-45 V-120" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="80" y="-82" font-size="10">abad_offset 75</text>
+  <!-- axes -->
+  <g transform="translate(-320,240)"><line class="s" x1="0" y1="0" x2="34" y2="0" marker-end="url(#arF)"/><text class="t" x="38" y="4" font-size="11">+x</text><line class="s" x1="0" y1="0" x2="0" y2="-34" marker-end="url(#arF)"/><text class="t" x="4" y="-36" font-size="11">+y</text></g>
+</svg>
+<figcaption><b>그림 3. 위에서 본 그림</b> (실제 비율, mm). 회색 = 모터(Ø80×40), 파란 회색 = 알루미늄 판, 보라 = 발(Ø30, 추정). 무릎은 안쪽 &gt;&lt; 배치라 앞 무릎은 x=+47.2, 뒤 무릎은 x=−47.2에 있습니다. 전체 폭 358mm는 사용자 예상(300~350)보다 조금 큽니다. 줄이려면 외전 오프셋을 70으로 하거나 벨트 영역을 좁히세요.</figcaption>
+</figure>
+
+<figure>
+<svg viewBox="-300 -95 600 410" role="img" aria-label="옆에서 본 그림">
+  <line class="gnd" x1="-290" y1="295" x2="290" y2="295"/>
+  <rect class="al" x="-150" y="-50" width="300" height="100" rx="8"/>
+  <rect class="mot" x="105" y="-40" width="40" height="80"/><rect class="mot" x="-145" y="-40" width="40" height="80"/>
+  <circle class="mot" cx="190" cy="0" r="40"/><circle class="mot" cx="-190" cy="0" r="40"/>
+  <!-- front leg -->
+  <line x1="190" y1="0" x2="47.2" y2="140" stroke="var(--al)" stroke-opacity=".75" stroke-width="26" stroke-linecap="round"/>
+  <line x1="47.2" y1="140" x2="190" y2="280" stroke="var(--petg)" stroke-opacity=".7" stroke-width="18" stroke-linecap="round"/>
+  <circle class="buy" cx="190" cy="0" r="15.9"/><circle class="buy" cx="47.2" cy="140" r="23.9"/>
+  <path class="s" stroke-width="1.6" d="M179.32,-11.80 L31.18,122.30 M201.58,10.91 L64.58,156.37"/>
+  <circle class="tpu" cx="190" cy="280" r="15"/>
+  <!-- rear leg -->
+  <line x1="-190" y1="0" x2="-47.2" y2="140" stroke="var(--al)" stroke-opacity=".75" stroke-width="26" stroke-linecap="round"/>
+  <line x1="-47.2" y1="140" x2="-190" y2="280" stroke="var(--petg)" stroke-opacity=".7" stroke-width="18" stroke-linecap="round"/>
+  <circle class="buy" cx="-190" cy="0" r="15.9"/><circle class="buy" cx="-47.2" cy="140" r="23.9"/>
+  <path class="s" stroke-width="1.6" d="M-179.32,-11.80 L-31.18,122.30 M-201.58,10.91 L-64.58,156.37"/>
+  <circle class="tpu" cx="-190" cy="280" r="15"/>
+  <!-- dims -->
+  <path class="dim" d="M-190,-75 H190" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="0" y="-80" text-anchor="middle" font-size="12">380</text>
+  <path class="dim" d="M250,0 V280" marker-start="url(#ar)" marker-end="url(#ar)"/><path class="dim" d="M190,0 H258 M205,280 H258"/>
+  <text class="t" x="256" y="140" font-size="12" transform="rotate(90 256 140)" text-anchor="middle">stance_h 280</text>
+  <path class="dim" d="M285,-50 V295" marker-start="url(#ar)" marker-end="url(#ar)"/><path class="dim" d="M150,-50 H291"/>
+  <text class="t" x="283" y="120" font-size="12" transform="rotate(90 283 120)" text-anchor="middle">전체 높이 345 (추정)</text>
+  <text class="t" x="95" y="55" font-size="11" transform="rotate(-44.4 95 55)">상퇴 200</text>
+  <text class="t" x="128" y="230" font-size="11" transform="rotate(44.4 128 230)">하퇴 200</text>
+  <text class="tm" x="-120" y="-60" font-size="10">몸통 높이 100 (추정)</text>
+  <text class="tm" x="-280" y="312" font-size="10">지면 (발 반지름 15 가정)</text>
+  <g transform="translate(-280,-75)"><line class="s" x1="0" y1="0" x2="34" y2="0" marker-end="url(#arF)"/><text class="t" x="38" y="4" font-size="11">+x</text><line class="s" x1="0" y1="0" x2="0" y2="-0"/></g>
+</svg>
+<figcaption><b>그림 4. 옆에서 본 그림</b> (실제 비율, mm). 서 있는 자세 h = 280에서 무릎은 고관절보다 142.8mm 안쪽, 140mm 아래에 있습니다. 상퇴는 수직에서 45.6° 기울어 있습니다. 초록 원 = HTD5M 풀리(20T Ø31.83 / 30T Ø47.75), 검은 선 = 벨트 경로.</figcaption>
+</figure>
+
+<figure>
+<svg viewBox="-235 -95 470 430" role="img" aria-label="앞에서 본 그림">
+  <line class="gnd" x1="-230" y1="295" x2="230" y2="295"/>
+  <rect class="al" x="-100" y="-50" width="200" height="100" rx="8"/>
+  <circle class="mot" cx="45" cy="0" r="40"/><circle class="mot" cx="-45" cy="0" r="40"/>
+  <!-- stacks left (+y → right side of image) -->
+  <rect class="mot" x="65" y="-40" width="40" height="80"/><rect class="al" x="105" y="-40" width="3" height="80"/><rect class="buy" x="112" y="-16" width="16" height="32"/><rect class="al" x="132" y="-40" width="7" height="80"/><rect class="mot" x="139" y="-40" width="40" height="80"/>
+  <rect class="mot" x="-105" y="-40" width="40" height="80"/><rect class="al" x="-108" y="-40" width="3" height="80"/><rect class="buy" x="-128" y="-16" width="16" height="32"/><rect class="al" x="-139" y="-40" width="7" height="80"/><rect class="mot" x="-179" y="-40" width="40" height="80"/>
+  <!-- legs -->
+  <rect class="al" x="107" y="0" width="26" height="140" fill-opacity=".3"/><rect class="petg" x="111" y="140" width="18" height="140"/>
+  <rect class="al" x="-133" y="0" width="26" height="140" fill-opacity=".3"/><rect class="petg" x="-129" y="140" width="18" height="140"/>
+  <circle class="tpu" cx="120" cy="280" r="15"/><circle class="tpu" cx="-120" cy="280" r="15"/>
+  <line class="ax" x1="120" y1="-60" x2="120" y2="300"/><line class="ax" x1="-120" y1="-60" x2="-120" y2="300"/>
+  <!-- dims -->
+  <path class="dim" d="M-179,-75 H179" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="0" y="-80" text-anchor="middle" font-size="12">전체 폭 358 (추정)</text>
+  <path class="dim" d="M-120,318 H120" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="0" y="332" text-anchor="middle" font-size="11">발 간격 240</text>
+  <path class="dim" d="M-45,-58 H45" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="0" y="-61" text-anchor="middle" font-size="10">외전 축 간격 90</text>
+  <path class="dim" d="M45,70 H120" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="82" y="66" text-anchor="middle" font-size="10">75</text>
+  <text class="tm" x="-225" y="-60" font-size="10">로봇 오른쪽(−y)</text><text class="tm" x="160" y="-60" font-size="10">왼쪽(+y)</text>
+</svg>
+<figcaption><b>그림 5. 앞에서 본 그림</b> (실제 비율, mm). 외전 모터는 축 방향에서 본 원(Ø80)이고, 고관절 스택은 좌우로 고관절 모터 → 상퇴(벨트) → 바깥판 → 무릎 모터 순입니다. 다리 중심면은 y = ±120입니다.</figcaption>
+</figure>
+
+<h3 id="s3-2">3.2 다리 1개 상세도</h3>
+<figure>
+<svg viewBox="-205 -60 440 370" role="img" aria-label="다리 상세도">
+  <!-- (a) side view, hip at (0,0) -->
+  <text class="t" x="-200" y="-45" font-size="13" font-weight="700">(a) 옆면 (FL 다리, x는 오른쪽이 앞)</text>
+  <circle class="estl" cx="0" cy="0" r="40"/><text class="te" x="30" y="-40" font-size="9">고관절·무릎 모터 Ø80</text>
+  <line x1="0" y1="0" x2="-142.8" y2="140" stroke="var(--al)" stroke-opacity=".35" stroke-width="64" stroke-linecap="round"/>
+  <line x1="-142.8" y1="140" x2="0" y2="280" stroke="var(--petg)" stroke-opacity=".7" stroke-width="18" stroke-linecap="round"/>
+  <circle class="buy" cx="0" cy="0" r="15.915"/><circle class="buy" cx="-142.8" cy="140" r="23.873"/>
+  <path class="s2" d="M-10.68,-11.80 L-158.82,122.30 M11.58,10.91 L-125.42,156.37"/>
+  <circle class="estf" cx="-50.4" cy="89.8" r="10"/><text class="te" x="-36" y="104" font-size="9">아이들러 (위치·크기 추정)</text>
+  <circle class="estl" cx="0" cy="0" r="21"/><circle class="estl" cx="0" cy="0" r="15"/>
+  <text class="te" x="18" y="22" font-size="9">6806ZZ 30×42×7</text><text class="te" x="18" y="32" font-size="9">(바깥판, 동축)</text>
+  <circle class="estl" cx="-142.8" cy="140" r="9"/><text class="te" x="-200" y="182" font-size="9">무릎 피벗 베어링 (규격 미정)</text>
+  <circle class="tpu" cx="0" cy="280" r="15"/>
+  <circle class="mkf" cx="0" cy="0" r="2"/><circle class="mkf" cx="-142.8" cy="140" r="2"/>
+  <text class="t" x="-55" y="60" font-size="10" transform="rotate(-44.4 -55 60)">상퇴 L_thigh 200</text>
+  <text class="t" x="-80" y="235" font-size="10" transform="rotate(44.4 -80 235)">하퇴 L_shank 200</text>
+  <text class="t" x="8" y="-6" font-size="9">20T PD 31.83</text><text class="t" x="-196" y="152" font-size="9">30T PD 47.75</text>
+  <text class="tm" x="-112" y="40" font-size="9">벨트 HTD5M 15w, 525 (105T)</text>
+  <line class="ax" x1="0" y1="-50" x2="0" y2="300"/>
+  <path class="dim" d="M40,0 V280" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="44" y="150" font-size="10">h 280</text>
+  <path class="dim" d="M-142.8,215 H0" marker-start="url(#ar)" marker-end="url(#ar)"/><path class="dim" d="M-142.8,150 V220"/><text class="t" x="-72" y="211" text-anchor="middle" font-size="10">142.8</text>
+  <text class="tm" x="-200" y="300" font-size="9">무릎 안쪽각 88.9°, 상퇴는 수직에서 45.6°</text>
+</svg>
+<figcaption><b>그림 6a. 다리 옆면 상세</b> (실제 비율, mm). 벨트 접선 좌표는 열린 벨트 공식으로 계산했습니다. 아이들러, 6806ZZ 위치, 무릎 피벗 베어링은 <span class="est">제안(점선)</span>입니다.</figcaption>
+</figure>
+
+<figure>
+<svg viewBox="35 -88 175 166" role="img" aria-label="고관절 단면" style="max-height:520px">
+  <line class="ax" x1="45" y1="-60" x2="45" y2="60"/><text class="tm" x="40" y="-63" font-size="5.5">외전 축 y=45</text>
+  <line class="ax" x1="40" y1="0" x2="205" y2="0"/><text class="tm" x="185" y="-3" font-size="7">고관절 축</text>
+  <rect class="mot" x="65" y="-40" width="40" height="80"/><text class="t" x="85" y="3" text-anchor="middle" font-size="7">고관절 모터</text><text class="t" x="85" y="12" text-anchor="middle" font-size="6">출력 → +y</text>
+  <rect class="al" x="105" y="-38" width="3" height="76"/>
+  <rect class="buy" x="112" y="-15.9" width="16" height="31.8"/><text class="t" x="120" y="-20" text-anchor="middle" font-size="6">20T</text>
+  <rect class="s" x="112.5" y="-17.5" width="15" height="3.2"/><rect class="s" x="112.5" y="14.3" width="15" height="3.2"/>
+  <rect class="estf" x="120" y="-15" width="19" height="30"/><text class="te" x="129" y="28" text-anchor="middle" font-size="6">허브 Ø30</text>
+  <rect class="al" x="132" y="-38" width="7" height="76"/>
+  <rect class="estf" x="132" y="-21" width="7" height="6"/><rect class="estf" x="132" y="15" width="7" height="6"/>
+  <text class="te" x="137" y="-43" font-size="5.5">6806ZZ (바깥판)</text>
+  <rect class="mot" x="139" y="-40" width="40" height="80"/><text class="t" x="159" y="3" text-anchor="middle" font-size="7">무릎 모터</text><text class="t" x="159" y="12" text-anchor="middle" font-size="6">출력 → −y</text>
+  <path class="dim" d="M45,52 H120" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="82" y="50" text-anchor="middle" font-size="7">abad_offset 75</text>
+  <line class="ax" x1="120" y1="-60" x2="120" y2="60"/><text class="tm" x="122" y="-55" font-size="5.5">다리 중심면 y=120</text>
+  <path class="dim" d="M65,66 H179" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="122" y="73" text-anchor="middle" font-size="7">스택 114 (65→179)</text>
+  <text class="tm" x="40" y="-78" font-size="5.5">고관절 축을 지나는 단면: 가로 = y(바깥쪽이 오른쪽), 세로 = z</text>
+</svg>
+<figcaption><b>그림 6b. 고관절 스택 단면 (y 방향 적층)</b> (실제 비율, mm). 상퇴는 안판(고관절 모터 출력에 볼트 체결)과 바깥판(6806ZZ 외륜)으로 벨트를 감쌉니다. 6806ZZ 내륜은 무릎 모터 출력 허브(Ø30)에 끼워져, 상퇴를 양쪽에서 지지합니다. Jeremy가 고관절 휨을 "반대편 베어링 추가"로 해결한 방식과 같습니다(<a href="https://hackaday.io/project/202366">출처</a>). 허브와 풀리 결합 방식은 <span class="est">추정</span>입니다.</figcaption>
+</figure>
+
+<h3 id="s3-3">3.3 발끝 작업 공간</h3>
+<figure>
+<svg viewBox="-430 -70 860 500" role="img" aria-label="작업 공간">
+  <path class="estf" d="M -400 0 A 400 400 0 0 0 400 0 L 103.5 0 A 103.5 103.5 0 0 1 -103.5 0 Z"/>
+  <circle class="mot" cx="0" cy="0" r="40"/>
+  <!-- stance -->
+  <line x1="0" y1="0" x2="-142.8" y2="140" stroke="var(--al)" stroke-width="10" stroke-linecap="round"/>
+  <line x1="-142.8" y1="140" x2="0" y2="280" stroke="var(--petg)" stroke-width="8" stroke-linecap="round"/>
+  <circle class="tpu" cx="0" cy="280" r="15"/>
+  <!-- crouch -->
+  <line x1="0" y1="0" x2="-173.2" y2="100" stroke="var(--al)" stroke-width="6" stroke-dasharray="10 5" stroke-linecap="round"/>
+  <line x1="-173.2" y1="100" x2="0" y2="200" stroke="var(--petg)" stroke-width="5" stroke-dasharray="10 5" stroke-linecap="round"/>
+  <circle class="tpu" cx="0" cy="200" r="12" fill-opacity=".3"/>
+  <line class="gnd" x1="-300" y1="295" x2="300" y2="295"/><line class="ax" x1="-300" y1="200" x2="300" y2="200"/>
+  <text class="t" x="20" y="285" font-size="13">서 있음 h = 280: 무릎 안쪽각 88.9°, 상퇴 45.6°</text>
+  <text class="t" x="20" y="195" font-size="13">웅크림 h = 200: 무릎 안쪽각 60.0°, 상퇴 60.0°</text>
+  <path class="dim" d="M330,200 V300" stroke-width="1.6" marker-end="url(#ar)"/><text class="t" x="336" y="255" font-size="12">점프 스트로크 100</text>
+  <text class="te" x="-410" y="-45" font-size="13">도달 영역 (외곽 r 400 = L1+L2, 내곽 r 103.5)</text>
+  <text class="te" x="-410" y="-28" font-size="12">내곽은 무릎 최대 굽힘 150° 가정 (추정) · 고관절 범위 미정이라 하반원 전체 표시</text>
+  <circle class="mkf" cx="0" cy="0" r="3"/><text class="t" x="8" y="-8" font-size="12">고관절 (0,0)</text>
+  <path class="dim" d="M0,0 L-282.8,282.8" marker-end="url(#ar)"/><text class="t" x="-250" y="232" font-size="12">r 400</text>
+</svg>
+<figcaption><b>그림 7. 발끝 작업 공간과 두 자세</b> (실제 비율, mm). 발이 고관절 바로 아래에 있다고 가정했습니다. 굵은 실선 = 서 있음, 점선 = 웅크림.</figcaption>
+<div class="formula">무릎 수평 오프셋 x = √(L² − (h/2)²)    (L1 = L2 = L = 200)
+  무릎 안쪽각 = 2·asin((h/2)/L),  상퇴 각(수직 기준) = acos((h/2)/L)
+  h = 280 → x = √(40000 − 19600) = 142.8 mm,  상퇴 각 = acos(140/200) = 45.6°,  무릎 안쪽각 = 2·asin(0.7) = 88.9°
+  h = 200 → x = √(40000 − 10000) = 173.2 mm,  상퇴 각 = acos(100/200) = 60.0°,  무릎 안쪽각 = 2·asin(0.5) = 60.0°
+  내곽 반지름 = 2L·cos(β/2), β = 무릎 굽힘 150° (추정) → 400·cos 75° = 103.5 mm</div>
+</figure>
+
+<h3 id="s3-4">3.4 벨트 구동 상세</h3>
+<figure>
+<svg viewBox="-45 -75 300 145" role="img" aria-label="벨트 상세">
+  <line class="ax" x1="-40" y1="0" x2="245" y2="0"/>
+  <circle class="buy" cx="0" cy="0" r="15.915"/><circle class="buy" cx="200" cy="0" r="23.873"/>
+  <circle class="mkf" cx="0" cy="0" r="1.2"/><circle class="mkf" cx="200" cy="0" r="1.2"/>
+  <path class="s2" d="M-0.633,-15.903 L199.05,-23.854 M-0.633,15.903 L199.05,23.854"/>
+  <path class="s2" d="M-0.633,-15.903 A15.915 15.915 0 0 0 -0.633 15.903"/>
+  <path class="s2" d="M199.05,-23.854 A23.873 23.873 0 0 1 199.05 23.854"/>
+  <circle class="estf" cx="100" cy="-26.9" r="10"/><text class="te" x="112" y="-38" font-size="6.5">아이들러 Ø20, 약 3mm 눌림 (추정)</text>
+  <text class="t" x="0" y="31" text-anchor="middle" font-size="7">20T · PD 31.83</text><text class="t" x="0" y="40" text-anchor="middle" font-size="6">무릎 모터 출력 (고관절 동축)</text>
+  <text class="t" x="200" y="38" text-anchor="middle" font-size="7">30T · PD 47.75</text><text class="t" x="200" y="47" text-anchor="middle" font-size="6">하퇴에 고정 (무릎 축)</text>
+  <path class="dim" d="M0,58 H200" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="t" x="100" y="56" text-anchor="middle" font-size="7">축간거리 C = L_thigh = 200</text>
+  <text class="tm" x="-40" y="-62" font-size="6.5">작은 풀리 감김각 175.4°, 맞물린 이 수 9.7개</text>
+</svg>
+<figcaption><b>그림 8. 무릎 벨트 구동</b> (실제 비율, mm. 중심선을 수평으로 돌려 그림).</figcaption>
+<div class="formula">피치원 지름 D = T·p/π (p = 5mm):  D1 = 20·5/π = 31.83,  D2 = 30·5/π = 47.75
+벨트 길이 L = 2C + π(D1+D2)/2 + (D2−D1)²/(4C) = 400 + 125.0 + 0.32 = 525.3 → HTD5M 525mm (105T)
+감김각 θ1 = 180° − 2·asin((D2−D1)/(2C)) = 180° − 2·2.28° = 175.4° → 맞물림 20 × 175.4/360 = 9.7개
+장력 차 (점프 피크, 9kg 가정): ΔF = τ_knee / r2 = 11.5 / 0.02387 ≈ 480 N → 15mm 폭 벨트 허용 하중은 확인 불가. 15~20mm 폭으로 벨트 제조사 정격을 확인하세요
+※ 525mm는 아이들러가 없는 기준입니다. 아이들러로 누르면 경로가 길어지니 530/535mm로 다시 계산하거나, 아이들러를 장력 조정용(누름량 0~3mm)으로만 쓰세요.</div>
+<p class="note">장력 조정 위치: 상퇴 가운데쯤(x ≈ 100, 그림 8 기준)에 장공(slot)을 낸 아이들러를 두고 바깥에서 벨트를 누르는 방식을 제안합니다. 근거는 TOPS가 1:1 벨트가 느슨해져 아이들러를 추가한 사례(<a href="https://hackaday.io/project/192122/logs?sort=oldest">로그</a>)와, quad A1이 1:1에서 토크가 부족해 감속 풀리로 바꾼 사례(<a href="https://blog.mjbots.com/2020/04/17/quad-a1-leg-updates">blog</a>)입니다. 양방향으로 토크가 걸리므로 위·아래 구간이 번갈아 느슨해진다는 점도 고려해야 합니다.</p>
+
+<h3 id="s3-5">3.5 액추에이터 장착 인터페이스</h3>
+<figure>
+<svg viewBox="-46 -46 196 92" role="img" aria-label="출력 플랜지" style="max-height:460px">
+  <circle class="mot" cx="0" cy="0" r="40" fill-opacity=".2" stroke-width=".6"/>
+  <circle class="estt" cx="0" cy="0" r="37"/>
+  <g class="esth">
+    <circle cx="34.18" cy="14.16" r="1.6"/><circle cx="14.16" cy="34.18" r="1.6"/><circle cx="-14.16" cy="34.18" r="1.6"/><circle cx="-34.18" cy="14.16" r="1.6"/>
+    <circle cx="-34.18" cy="-14.16" r="1.6"/><circle cx="-14.16" cy="-34.18" r="1.6"/><circle cx="14.16" cy="-34.18" r="1.6"/><circle cx="34.18" cy="-14.16" r="1.6"/>
+  </g>
+  <circle class="estt" cx="0" cy="0" r="28.5"/><circle class="estt" cx="0" cy="0" r="23.5"/><circle class="estt" cx="0" cy="0" r="17"/>
+  <g class="esth"><circle cx="0" cy="-28.5" r="2"/><circle cx="24.68" cy="14.25" r="2"/><circle cx="-24.68" cy="14.25" r="2"/></g>
+  <circle class="s" stroke-width=".7" cx="0" cy="0" r="12.5"/><circle class="s" stroke-width=".5" cx="0" cy="0" r="10.2"/>
+  <text class="t" x="50" y="-34" font-size="4">Ø80 외경 (제조사)</text>
+  <text class="te" x="50" y="-27" font-size="4">Ø74: 8-M3 깊이 5 (도면 표기, 위추 미확인)</text>
+  <text class="te" x="50" y="-20" font-size="4">6-M3 깊이 5: 원주 미확인</text>
+  <text class="te" x="50" y="-13" font-size="4">3-Ø4±0.05 핀: 원주 미확인 (그림은 Ø57에 예시)</text>
+  <text class="te" x="50" y="-6" font-size="4">Ø57 / Ø47 / Ø34: 무엇에 대응하는지 미확인</text>
+  <text class="t" x="50" y="1" font-size="4">Ø25±0.1 · Ø20.4±0.05 (중심 보스, 표기값)</text>
+  <text class="tm" x="50" y="11" font-size="3.6">분홍 = 예시로 그린 위치 (확정 아님)</text>
+  <text class="tm" x="50" y="17" font-size="3.6">→ STEP에서 실측한 뒤 확정</text>
+</svg>
+<figcaption><b>그림 9. 출력 플랜지 인터페이스</b> (실제 비율, mm. 정면). 치수 값은 공식 도면 PDF와 매뉴얼 rev2.2 p.5에서 읽은 것이고, <b>어느 구멍이 어느 원주에 있는지는 도면 해석이 모호</b>해 모두 점선으로 표시했습니다. 뒷면(드라이버 쪽)도 Ø74 원주에 8-M3 깊이 5입니다. STEP: <a href="https://14180476.s21i.faiusr.com/61/ABUIABAAGAAgjJnprwYon6erHw.stp">드라이버 포함 STEP</a> · <a href="https://14180476.s21i.faiusr.com/61/ABUIABA9GAAgt87AxQYolOC2pAE.pdf">설치 도면 PDF</a></figcaption>
+</figure>
+<div class="grid g2">
+<div class="card"><h4>STEP으로 반드시 확인할 치수</h4>
+<ul class="check">
+<li>출력면 8-M3 원주가 Ø74가 맞는지, 각도 기준(0°)</li>
+<li>6-M3의 원주 지름과 위상, 나사 깊이 5</li>
+<li>Ø4 핀 3개의 원주와 각도</li>
+<li>중심 보스 Ø20.4±0.05 / Ø25±0.1의 높이(돌출·함몰)</li>
+<li>출력면에서 회전하는 부분과 고정 부분의 경계 지름 (고정 하우징에 닿지 않게)</li>
+<li>뒷면 8-M3 원주와 드라이버 커넥터 위치·케이블 출구 방향</li>
+<li>전체 길이 2.8 + 26 + 10.5 = 39.3 대 표기 40</li>
+<li>DE(출력축 엔코더) 자석·센서가 차지하는 공간</li>
+</ul></div>
+<div class="card"><h4>값이 충돌하는 항목 (양쪽 모두 표시)</h4>
+<table>
+<tr><th>항목</th><th>값 A</th><th>값 B</th><th>이 보고서</th></tr>
+<tr><td>엔코더</td><td>14bit MA732 (rev2.2 p.10, 실제 설정 cpr 16384)</td><td>16bit MA600 (rev1.2 영문, 제품 페이지)</td><td><b>14bit</b>로 계획</td></tr>
+<tr><td>전압</td><td>12~56V (제품 페이지)</td><td>정격 15~48V, 한계 12/72V (매뉴얼 p.10)</td><td>6S 18~25.2V는 양쪽 모두 범위 안</td></tr>
+<tr><td>상저항</td><td>0.44Ω (제품 페이지)</td><td>0.48Ω (매뉴얼 예시)</td><td>0.44Ω으로 계산</td></tr>
+<tr><td>CAN 속도</td><td>기본 500k</td><td>최대 1M</td><td><b>1M으로 설정</b></td></tr>
+<tr><td>무게</td><td>388g (셸 포함)</td><td>254g (셸 없음, Aaed 실측)</td><td>388g</td></tr>
+</table></div>
+</div>
+
+<h3 id="s3-6">3.6 소재 배치</h3>
+<figure>
+<svg viewBox="0 0 900 430" role="img" aria-label="소재 배치 분해도">
+  <text class="t" x="20" y="24" font-size="14" font-weight="700">몸통</text>
+  <rect class="al" x="40" y="40" width="300" height="22" rx="4"/><text class="t" x="190" y="56" text-anchor="middle" font-size="12">윗판 (Al 5052 판금)</text>
+  <rect class="al" x="40" y="80" width="40" height="90" rx="4"/><rect class="al" x="300" y="80" width="40" height="90" rx="4"/><text class="t" x="190" y="76" text-anchor="middle" font-size="11">옆판·격벽 (Al 5052 절곡, 좌우 사각형)</text>
+  <rect class="petg" x="100" y="95" width="180" height="30" rx="4"/><text class="t" x="190" y="115" text-anchor="middle" font-size="11">배터리 트레이 (PETG)</text>
+  <rect class="petg" x="100" y="135" width="180" height="26" rx="4"/><text class="t" x="190" y="153" text-anchor="middle" font-size="11">전장 판 (PETG)</text>
+  <rect class="al" x="40" y="185" width="300" height="22" rx="4"/><text class="t" x="190" y="201" text-anchor="middle" font-size="12">아랫판 (Al 5052 판금)</text>
+  <rect class="petg" x="40" y="225" width="300" height="20" rx="4"/><text class="t" x="190" y="240" text-anchor="middle" font-size="11">커버 (PETG)</text>
+  <rect class="buy" x="40" y="265" width="140" height="40" rx="4"/><text class="t" x="110" y="290" text-anchor="middle" font-size="11">외전 모터 ×4 (구매)</text>
+  <rect class="petg" x="200" y="265" width="140" height="40" rx="4"/><text class="t" x="270" y="282" text-anchor="middle" font-size="11">외전 모터 마운트</text><text class="t" x="270" y="297" text-anchor="middle" font-size="10">(PETG, 판금 겸용 가능)</text>
+  <rect class="buy" x="40" y="320" width="300" height="40" rx="4"/><text class="t" x="190" y="345" text-anchor="middle" font-size="11">구매: 배터리, Pi 5, HAT, IMU, 접촉기, 퓨즈, DC-DC, E-stop</text>
+
+  <text class="t" x="400" y="24" font-size="14" font-weight="700">다리 1개 (×4)</text>
+  <rect class="al" x="420" y="40" width="200" height="50" rx="6"/><text class="t" x="520" y="62" text-anchor="middle" font-size="12">외전 브래킷</text><text class="t" x="520" y="78" text-anchor="middle" font-size="10">(Al 절곡 권장, 하중 경로)</text>
+  <rect class="buy" x="640" y="40" width="110" height="50" rx="6"/><text class="t" x="695" y="62" text-anchor="middle" font-size="11">고관절 모터</text><text class="t" x="695" y="78" text-anchor="middle" font-size="10">(구매)</text>
+  <rect class="buy" x="765" y="40" width="110" height="50" rx="6"/><text class="t" x="820" y="62" text-anchor="middle" font-size="11">무릎 모터</text><text class="t" x="820" y="78" text-anchor="middle" font-size="10">(구매)</text>
+  <rect class="al" x="420" y="110" width="200" height="22" rx="4"/><text class="t" x="520" y="126" text-anchor="middle" font-size="11">상퇴 안판 3t (Al)</text>
+  <rect class="petg" x="420" y="138" width="200" height="22" rx="4"/><text class="t" x="520" y="154" text-anchor="middle" font-size="11">스페이서·벨트 가이드 (PETG)</text>
+  <rect class="al" x="420" y="166" width="200" height="22" rx="4"/><text class="t" x="520" y="182" text-anchor="middle" font-size="11">상퇴 바깥판 7t 영역 (Al, 6806 자리)</text>
+  <rect class="buy" x="640" y="110" width="235" height="78" rx="6"/><text class="t" x="757" y="132" text-anchor="middle" font-size="11">구매: HTD5M 20T·30T 풀리, 525 벨트,</text><text class="t" x="757" y="150" text-anchor="middle" font-size="11">6806ZZ, 아이들러 베어링, M3·M4 볼트,</text><text class="t" x="757" y="168" text-anchor="middle" font-size="11">열융착 인서트</text>
+  <rect class="petg" x="420" y="210" width="200" height="40" rx="6"/><text class="t" x="520" y="228" text-anchor="middle" font-size="11">하퇴 (PETG 출력)</text><text class="te" x="520" y="243" text-anchor="middle" font-size="10">또는 카본 튜브 + 끝단 (미정)</text>
+  <rect class="petg" x="640" y="210" width="235" height="40" rx="6"/><text class="t" x="757" y="234" text-anchor="middle" font-size="11">풀리 어댑터·허브 (PETG, 강도 시험 필요)</text>
+  <rect class="tpu" x="420" y="270" width="200" height="34" rx="17"/><text class="t" x="520" y="292" text-anchor="middle" font-size="11">발 (TPU 95A)</text>
+  <rect class="estf" x="640" y="270" width="235" height="34" rx="6"/><text class="te" x="757" y="292" text-anchor="middle" font-size="11">무릎 피벗 베어링 (규격 미정)</text>
+  <g font-size="12">
+    <rect class="al" x="420" y="340" width="16" height="16"/><text class="t" x="442" y="353">Al 5052 판금 외주</text>
+    <rect class="petg" x="580" y="340" width="16" height="16"/><text class="t" x="602" y="353">PETG 출력</text>
+    <rect class="buy" x="700" y="340" width="16" height="16"/><text class="t" x="722" y="353">구매 부품</text>
+    <rect class="tpu" x="420" y="370" width="16" height="16"/><text class="t" x="442" y="383">TPU 95A</text>
+    <rect class="estf" x="580" y="370" width="16" height="16"/><text class="te" x="602" y="383">미정 / 추정</text>
+  </g>
+</svg>
+<figcaption><b>그림 10. 소재 배치 분해도</b> (비율 아님). 하중을 받는 몸통 판, 외전 브래킷, 상퇴 판은 알루미늄 5052 판금 외주로, 나머지는 PETG로 출력하는 혼합안입니다. 근거: PLA의 열변형온도는 54°C라 모터 열에 약하고(<a href="https://wiki.bambulab.com/filament-acc/abs-asa-pc/bambu_pla_basic_technical_data_sheet.pdf">TDS</a>), PAHT-CF는 밀폐형 프린터가 필수입니다.</figcaption>
+</figure>
+
+<h3 id="s3-7">3.7 무게 예산</h3>
+<figure>
+<div class="chartbox"><canvas id="chWeight" aria-label="무게 예산 도넛 차트"></canvas></div>
+<figcaption><b>그림 11. 무게 예산 (합계 약 7.96kg)</b>. 액추에이터 4.66kg만 출처가 있고(388g × 12, 제조사), 나머지는 모두 <span class="tag t-est">추정</span>입니다. 다리 링크(0.80kg)는 전체의 약 10%로, Mini Cheetah의 "다리 질량 10% 미만"(<a href="https://arxiv.org/pdf/2110.02799">arXiv</a>)과 맞췄습니다.</figcaption>
+</figure>
+
+<!-- ============ 4 ============ -->
+<h2 class="sec" id="s4">4. 성능 검증</h2>
+<figure>
+<div class="chartbox"><canvas id="chTorque" aria-label="관절 토크 차트"></canvas></div>
+<figcaption><b>그림 12. 관절별 필요 토크 vs 모터 한계 (9kg)</b>. 기준선: 정격 5Nm(제조사), 사용 가능 피크 8.5Nm(= 스톨 11 ÷ 안전계수 1.3, 추정), 스톨 11Nm(제조사). "무릎 모터"는 1.5:1 벨트(효율 0.95) 뒤에서 모터가 내야 하는 토크입니다. 점프 때 고관절·외전 토크는 확인 불가라 비워 두었습니다(MuJoCo로 확인 예정).</figcaption>
+<div class="formula">가정: m = 9 kg (7kg도 함께 표기), g = 9.81, L1 = L2 = 0.20 m, 다리 질량 무시, 발은 고관절 바로 아래
+무릎 τk = F·x, x = √(L² − (h/2)²)  |  고관절 τh = F·e + Fx·h (e = 0.05 m, Fx = 0.15F 가정)  |  외전 τa = F × 0.07 m
+정지  F = mg/4 = 22.1 N, h = 0.28 (x = 0.143) → τk 3.15 (7kg 2.45), τh 1.1, τa 1.55 Nm
+트롯 피크  F = π·mg/4 = 69.3 N (듀티 0.5, 반사인 하중) → τk 9.90 (7kg 7.70), τh 6.4 (추정), τa 4.85 Nm
+트롯 RMS = 피크/2 (반사인, 듀티 0.5) → τk 4.95 (7kg 3.85), τh 약 3.2, τa 약 2.4 Nm
+점프 10cm  v = √(2g·0.1) = 1.40 m/s, a = v²/(2·0.1) = 9.81 → 다리당 평균 mg/2 = 44.1 N, 피크 ×1.5 = 66.2 N (추정),
+           웅크림 h = 0.20 (x = 0.173) → τk 11.5 Nm (7kg 8.9)
+모터 토크 = τ / (감속비 × 0.95)</div>
+</figure>
+
+<figure>
+<div class="chartbox"><canvas id="chKnee" aria-label="무릎 감속비 비교"></canvas></div>
+<figcaption><b>그림 13. 무릎 감속비 비교 (9kg)</b>. 막대 = 모터가 내야 하는 토크(왼쪽 축, Nm), 선 = 무릎 최고 속도(오른쪽 축, rad/s). 최고 속도 = 420rpm(제조사 무부하 최대 = 44.0 rad/s) ÷ 감속비이고, 실제 부하에서는 더 낮습니다. <b>1.5:1에서 트롯 피크 6.95 / RMS 3.47 / 점프 8.07Nm, 속도 29.3 rad/s</b>로 토크와 속도의 균형이 가장 좋습니다. 1:1은 트롯 RMS가 정격의 99%이고 점프는 스톨을 넘습니다.</figcaption>
+</figure>
+
+<figure>
+<div class="chartbox"><canvas id="chPerKg" aria-label="1kg당 토크 비교"></canvas></div>
+<figcaption><b>그림 14. 몸무게 1kg당 관절 토크</b>. Mini Cheetah: 피크 17 / 연속 6.9Nm, 9kg(<a href="https://dspace.mit.edu/handle/1721.1/118671">Katz 논문</a>). MC 무릎은 모델 감속비 9.33/6 ≈ 1.55배로 추정했습니다. 우리 값은 8kg 기준이고, 피크는 스톨 11Nm, 연속은 정격 5Nm(무릎은 ×1.5×0.95)입니다. 기준선 "보행 1.0 / 점프급 1.9"는 Pupper v3·Doggo(약 1.0~1.17)와 Mini Cheetah(1.9)에서 뽑은 경험값입니다. 우리 고관절 피크(1.375)는 보행에는 충분하지만 MC급 점프(1.9)에는 못 미칩니다. 10cm 점프는 무릎 감속으로 보완하는 전제입니다.</figcaption>
+</figure>
+
+<!-- ============ 5 ============ -->
+<h2 class="sec" id="s5">5. 전장 설계</h2>
+<figure>
+<svg viewBox="0 0 960 470" role="img" aria-label="전원 분배도">
+  <rect class="boxp" x="15" y="60" width="130" height="80" rx="10"/><text class="t" x="80" y="88" text-anchor="middle" font-size="13" font-weight="700">6S LiPo</text><text class="tm" x="80" y="106" text-anchor="middle" font-size="11">5000mAh, 22.2V</text><text class="tm" x="80" y="122" text-anchor="middle" font-size="11">18~25.2V</text>
+  <rect class="box" x="175" y="75" width="95" height="50" rx="8"/><text class="t" x="222" y="98" text-anchor="middle" font-size="12">XT90-S</text><text class="tm" x="222" y="114" text-anchor="middle" font-size="10">안티스파크</text>
+  <rect class="box" x="300" y="65" width="130" height="70" rx="8"/><text class="t" x="365" y="90" text-anchor="middle" font-size="12">DC 접촉기</text><text class="tm" x="365" y="106" text-anchor="middle" font-size="10">100A, 24V 코일, 1NO</text><text class="tm" x="365" y="121" text-anchor="middle" font-size="10">(E-stop이 코일을 끊음)</text>
+  <rect class="box" x="460" y="75" width="105" height="50" rx="8"/><text class="t" x="512" y="98" text-anchor="middle" font-size="12">MIDI 60A</text><text class="tm" x="512" y="114" text-anchor="middle" font-size="10">퓨즈</text>
+  <rect class="box" x="595" y="60" width="120" height="80" rx="8"/><text class="t" x="655" y="90" text-anchor="middle" font-size="12">분배 버스</text><text class="tm" x="655" y="106" text-anchor="middle" font-size="10">터미널 / 버스바</text><text class="tm" x="655" y="121" text-anchor="middle" font-size="10">24V</text>
+  <path class="pw" stroke-width="3.2" d="M145 100 H175" marker-end="url(#arP)"/><path class="pw" stroke-width="3.2" d="M270 100 H300" marker-end="url(#arP)"/><path class="pw" stroke-width="3.2" d="M430 100 H460" marker-end="url(#arP)"/><path class="pw" stroke-width="3.2" d="M565 100 H595" marker-end="url(#arP)"/>
+  <text class="tp" x="150" y="90" font-size="10">12AWG</text><text class="tp" x="440" y="90" font-size="10">12AWG</text>
+  <text class="tp" x="300" y="55" font-size="11">메인 피크 약 50A (점프 순간, 추정)</text>
+  <!-- precharge -->
+  <path class="estl" d="M285 100 V165 H445 V100"/><rect class="estf" x="335" y="152" width="60" height="26" rx="4" style="fill:var(--bg);fill-opacity:1"/><text class="te" x="365" y="169" text-anchor="middle" font-size="10">프리차지 R</text><text class="te" x="365" y="195" text-anchor="middle" font-size="10">(값 미정, 추정 회로)</text>
+  <!-- estop coil circuit -->
+  <rect class="box" x="300" y="230" width="130" height="50" rx="25"/><text class="t" x="365" y="252" text-anchor="middle" font-size="12">E-stop 버섯형</text><text class="tm" x="365" y="268" text-anchor="middle" font-size="10">22mm, NC 접점</text>
+  <path class="pw" stroke-width="1.2" stroke-dasharray="5 3" d="M80 140 V255 H300 M430 255 H470 V135 H430"/>
+  <text class="tp" x="160" y="248" font-size="10">코일 회로 (가는 선, 약 1A 미만 추정)</text>
+  <!-- branches -->
+  <g font-size="11">
+    <rect class="box" x="790" y="20" width="155" height="44" rx="8"/><text class="t" x="867" y="40" text-anchor="middle">FL (ID 1~3)</text><text class="tm" x="867" y="56" text-anchor="middle" font-size="10">XT30, 14AWG</text>
+    <rect class="box" x="790" y="74" width="155" height="44" rx="8"/><text class="t" x="867" y="94" text-anchor="middle">FR (ID 4~6)</text><text class="tm" x="867" y="110" text-anchor="middle" font-size="10">XT30, 14AWG</text>
+    <rect class="box" x="790" y="128" width="155" height="44" rx="8"/><text class="t" x="867" y="148" text-anchor="middle">RL (ID 7~9)</text><text class="tm" x="867" y="164" text-anchor="middle" font-size="10">XT30, 14AWG</text>
+    <rect class="box" x="790" y="182" width="155" height="44" rx="8"/><text class="t" x="867" y="202" text-anchor="middle">RR (ID 10~12)</text><text class="tm" x="867" y="218" text-anchor="middle" font-size="10">XT30, 14AWG</text>
+  </g>
+  <path class="pw" stroke-width="2.2" d="M715 100 H750 V42 H790" marker-end="url(#arP)"/><path class="pw" stroke-width="2.2" d="M750 96 H790" marker-end="url(#arP)"/><path class="pw" stroke-width="2.2" d="M750 100 V150 H790" marker-end="url(#arP)"/><path class="pw" stroke-width="2.2" d="M750 150 V204 H790" marker-end="url(#arP)"/>
+  <text class="tp" x="720" y="245" font-size="10">다리당 피크 전류 확인 불가</text><text class="tp" x="720" y="258" font-size="10">(GDS68 최대 선전류 30A/개, 매뉴얼)</text>
+  <!-- DC-DC -->
+  <rect class="box" x="595" y="300" width="120" height="56" rx="8"/><text class="t" x="655" y="324" text-anchor="middle" font-size="12">DC-DC</text><text class="tm" x="655" y="341" text-anchor="middle" font-size="10">24V→5V 5A</text>
+  <rect class="boxa" x="790" y="300" width="155" height="56" rx="8"/><text class="t" x="867" y="324" text-anchor="middle" font-size="12">Pi 5 + CAN HAT</text><text class="tm" x="867" y="341" text-anchor="middle" font-size="10">5V 약 25W 가정 (추정)</text>
+  <path class="pw" stroke-width="1.6" d="M655 140 V300" marker-end="url(#arP)"/><path class="pw" stroke-width="1.6" d="M715 328 H790" marker-end="url(#arP)"/>
+  <text class="tp" x="662" y="230" font-size="10">18AWG, 24V측 약 1.2A (추정)</text>
+  <rect class="boxa" x="790" y="380" width="155" height="56" rx="8"/><text class="t" x="867" y="404" text-anchor="middle" font-size="12">HAT 절연 측 전원</text><text class="tm" x="867" y="421" text-anchor="middle" font-size="10">8~26V 입력 (판매자 표기)</text>
+  <path class="pw" stroke-width="1.2" stroke-dasharray="5 3" d="M715 100 H730 V408 H790" marker-end="url(#arP)"/>
+  <text class="tm" x="20" y="430" font-size="11">소프트웨어 저전압 정지: 0x017로 버스 전압을 읽어 셀당 약 3.5V(약 21V)에서 정지 (추정 기준). RC용 LiPo에는 BMS가 없습니다.</text>
+  <text class="tm" x="20" y="448" font-size="11">회생: 배터리가 흡수하지만, 벤치 전원에서 시험할 때는 GDS68 EMG/GND에 브레이크 저항을 달거나 dc_max_negative_current를 설정 (매뉴얼 p.38~39).</text>
+</svg>
+<figcaption><b>그림 15. 전원 분배도</b> (비율 아님). 빨간 굵은 선 = 대전류, 점선 = 제어·보조 회로, 분홍 = 추정 회로. 피크 전류는 점프 순간 기계 출력 약 250~400W + 동손 약 760W(8개 모터 × 1.5 × 17² × 0.22Ω)를 22V로 나눠 약 50A로 추정했습니다.</figcaption>
+</figure>
+
+<figure>
+<svg viewBox="0 0 960 330" role="img" aria-label="CAN 토폴로지">
+  <rect class="boxa" x="20" y="110" width="140" height="110" rx="10"/><text class="t" x="90" y="140" text-anchor="middle" font-size="13" font-weight="700">2-CH CAN FD HAT</text><text class="tm" x="90" y="160" text-anchor="middle" font-size="11">can0 / can1</text><text class="tc" x="90" y="182" text-anchor="middle" font-size="11">120Ω 점퍼 ON (양쪽)</text><text class="tm" x="90" y="200" text-anchor="middle" font-size="10">1Mbps</text>
+  <!-- can0 -->
+  <text class="tc" x="200" y="40" font-size="13" font-weight="700">can0 (앞다리)</text>
+  <g font-size="11">
+    <rect class="box" x="200" y="55" width="105" height="48" rx="8"/><text class="t" x="252" y="76" text-anchor="middle">ID1 FL abad</text><text class="tm" x="252" y="92" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="box" x="325" y="55" width="105" height="48" rx="8"/><text class="t" x="377" y="76" text-anchor="middle">ID2 FL hip</text><text class="tm" x="377" y="92" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="box" x="450" y="55" width="105" height="48" rx="8"/><text class="t" x="502" y="76" text-anchor="middle">ID3 FL knee</text><text class="tm" x="502" y="92" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="box" x="575" y="55" width="105" height="48" rx="8"/><text class="t" x="627" y="76" text-anchor="middle">ID4 FR abad</text><text class="tm" x="627" y="92" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="box" x="700" y="55" width="105" height="48" rx="8"/><text class="t" x="752" y="76" text-anchor="middle">ID5 FR hip</text><text class="tm" x="752" y="92" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="boxa" x="825" y="55" width="115" height="48" rx="8" stroke-width="2.5"/><text class="t" x="882" y="76" text-anchor="middle" font-weight="700">ID6 FR knee</text><text class="tc" x="882" y="92" text-anchor="middle" font-size="10" font-weight="700">R120 ON</text>
+  </g>
+  <path class="cn" stroke-width="2.5" d="M160 140 H180 V79 H200 M305 79 H325 M430 79 H450 M555 79 H575 M680 79 H700 M805 79 H825"/>
+  <!-- can1 -->
+  <text class="tc" x="200" y="225" font-size="13" font-weight="700">can1 (뒷다리)</text>
+  <g font-size="11">
+    <rect class="box" x="200" y="240" width="105" height="48" rx="8"/><text class="t" x="252" y="261" text-anchor="middle">ID7 RL abad</text><text class="tm" x="252" y="277" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="box" x="325" y="240" width="105" height="48" rx="8"/><text class="t" x="377" y="261" text-anchor="middle">ID8 RL hip</text><text class="tm" x="377" y="277" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="box" x="450" y="240" width="105" height="48" rx="8"/><text class="t" x="502" y="261" text-anchor="middle">ID9 RL knee</text><text class="tm" x="502" y="277" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="box" x="575" y="240" width="105" height="48" rx="8"/><text class="t" x="627" y="261" text-anchor="middle">ID10 RR abad</text><text class="tm" x="627" y="277" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="box" x="700" y="240" width="105" height="48" rx="8"/><text class="t" x="752" y="261" text-anchor="middle">ID11 RR hip</text><text class="tm" x="752" y="277" text-anchor="middle" font-size="10">R120 OFF</text>
+    <rect class="boxa" x="825" y="240" width="115" height="48" rx="8" stroke-width="2.5"/><text class="t" x="882" y="261" text-anchor="middle" font-weight="700">ID12 RR knee</text><text class="tc" x="882" y="277" text-anchor="middle" font-size="10" font-weight="700">R120 ON</text>
+  </g>
+  <path class="cn" stroke-width="2.5" d="M160 190 H180 V264 H200 M305 264 H325 M430 264 H450 M555 264 H575 M680 264 H700 M805 264 H825"/>
+  <text class="tm" x="200" y="140" font-size="11">연선(트위스트 페어) · 일자형 데이지 체인 · 분기(스텁)는 짧게</text>
+  <text class="tm" x="200" y="158" font-size="11">버스 양 끝(HAT 1곳 + 끝 모터 1곳)에만 120Ω. 측정: 전원 OFF 상태에서 CANH-CANL 저항 ≈ 60Ω이면 정상</text>
+  <text class="te" x="200" y="176" font-size="11">GDS68 커넥터에 CAN 입출력 쌍이 있는지는 확인 불가 → 실물 확인 후 체인 방식 결정</text>
+  <text class="tm" x="200" y="318" font-size="11">각 GDS68에는 온보드 120Ω이 있고 can.config.enable_r120으로 켜고 끕니다(매뉴얼 p.38). 끝 모터 2개(ID 6, ID 12)만 ON.</text>
+</svg>
+<figcaption><b>그림 16. CAN 버스 토폴로지</b> (비율 아님). 앞다리 6축은 can0, 뒷다리 6축은 can1입니다. 종단저항을 켤 모터는 <b>ID 6과 ID 12 두 개</b>뿐이고, HAT 쪽 종단은 점퍼로 켭니다.</figcaption>
+</figure>
+
+<figure>
+<div class="chartbox"><canvas id="chCan" aria-label="CAN 대역폭 차트"></canvas></div>
+<figcaption><b>그림 17. 버스 개수 × 제어 주기별 CAN 부하율 (1Mbps)</b>. 점선 = 50% 기준(관행적 여유, 추정). 기본값 500kbps 그대로 두면 모든 값이 2배가 됩니다.</figcaption>
+<div class="formula">표준 프레임 (11bit ID, 데이터 8B): SOF1 + ID11 + RTR·IDE·r0 3 + DLC4 + 데이터64 + CRC15 + 구분자1 + ACK2 + EOF7 + IFS3 = 111 bit
+비트 스터핑 최악: ⌊(98−1)/4⌋ = 24 → 135 bit.  MIT 응답 6B: 95 bit, 최악 115 bit
+모터 1개 왕복 = 135 + 115 = 250 bit (최악)
+버스 부하 U = (12/버스 수) × 250 × f / 1,000,000
+  예) 버스 2개, 250Hz: 6 × 250 × 250 / 1e6 = 37.5 %   |  버스 2개, 500Hz: 75 %   |  버스 3개, 500Hz: 50 %</div>
+</figure>
+
+<figure>
+<svg viewBox="-260 -230 520 460" role="img" aria-label="배선 하네스 개념도">
+  <rect class="al" x="-150" y="-100" width="300" height="200" rx="8" fill-opacity=".18"/>
+  <rect class="mot" x="105" y="-85" width="40" height="80" fill-opacity=".25"/><rect class="mot" x="105" y="5" width="40" height="80" fill-opacity=".25"/><rect class="mot" x="-145" y="-85" width="40" height="80" fill-opacity=".25"/><rect class="mot" x="-145" y="5" width="40" height="80" fill-opacity=".25"/>
+  <rect class="mot" x="150" y="-179" width="80" height="114" fill-opacity=".25"/><rect class="mot" x="150" y="65" width="80" height="114" fill-opacity=".25"/><rect class="mot" x="-230" y="-179" width="80" height="114" fill-opacity=".25"/><rect class="mot" x="-230" y="65" width="80" height="114" fill-opacity=".25"/>
+  <rect class="estf" x="-80" y="-25" width="160" height="50" rx="4"/><text class="te" x="0" y="-8" text-anchor="middle" font-size="10">배터리 (아래층)</text>
+  <rect class="boxa" x="20" y="-60" width="70" height="40" rx="5"/><text class="t" x="55" y="-42" text-anchor="middle" font-size="10">Pi 5 + HAT</text><text class="tm" x="55" y="-29" text-anchor="middle" font-size="9">(윗층)</text>
+  <rect class="boxp" x="-95" y="35" width="80" height="45" rx="5"/><text class="t" x="-55" y="53" text-anchor="middle" font-size="9">접촉기·퓨즈</text><text class="t" x="-55" y="66" text-anchor="middle" font-size="9">분배 버스</text>
+  <circle class="boxp" cx="-120" cy="-70" r="12"/><text class="tp" x="-120" y="-85" text-anchor="middle" font-size="9">E-stop (윗판)</text>
+  <!-- power -->
+  <path class="pw" stroke-width="2.5" d="M-55,35 V15 H95 V-40 H125 M95,15 V40 H125 M-55,80 V95 H-125 M-95,57 H-125"/>
+  <path class="pw" stroke-width="2.5" d="M125,-40 C150,-50 160,-80 175,-100 M125,40 C150,50 160,80 175,100 M-125,95 C-150,100 -160,90 -175,100 M-125,57 C-150,40 -160,-60 -175,-100"/>
+  <!-- can -->
+  <path class="cn" stroke-width="1.8" d="M55,-20 V-5 H115 V-30 C140,-60 150,-90 170,-110 M115,-5 V30 C140,60 150,90 170,110"/>
+  <path class="cn" stroke-width="1.8" d="M40,-20 V5 H-115 V-30 C-140,-60 -150,-90 -170,-110 M-115,5 V30 C-140,60 -150,90 -170,110"/>
+  <!-- service loops -->
+  <circle class="estl" cx="148" cy="-45" r="14"/><circle class="estl" cx="148" cy="45" r="14"/><circle class="estl" cx="-148" cy="-45" r="14"/><circle class="estl" cx="-148" cy="45" r="14"/>
+  <text class="te" x="160" y="-210" font-size="10" text-anchor="middle">외전 축을 지나는 곳에 서비스 루프</text>
+  <path class="estl" d="M160,-205 L150,-62"/>
+  <line class="pw" stroke-width="2.5" x1="-250" y1="200" x2="-225" y2="200"/><text class="t" x="-220" y="204" font-size="11">24V 전원 (14AWG 분기)</text>
+  <line class="cn" stroke-width="1.8" x1="-60" y1="200" x2="-35" y2="200"/><text class="t" x="-30" y="204" font-size="11">CAN 연선</text>
+  <circle class="estl" cx="80" cy="200" r="8"/><text class="te" x="94" y="204" font-size="11">서비스 루프 (추정 위치)</text>
+</svg>
+<figcaption><b>그림 18. 배선 하네스 개념도</b> (위에서 본 그림, 몸통·모터는 실제 비율이고 배선 경로는 개념도). 전원(빨강)과 CAN(파랑)이 각 외전 브래킷을 지나 고관절 스택으로 갑니다. 외전 회전에 따라 케이블이 휘므로 외전 축 근처에 서비스 루프를 두고, 전원선과 CAN선은 가능한 한 떨어뜨려 배선하세요.</figcaption>
+</figure>
+
+<!-- ============ 6 ============ -->
+<h2 class="sec" id="s6">6. 소프트웨어 구조</h2>
+<figure>
+<svg viewBox="0 0 900 430" role="img" aria-label="소프트웨어 스택">
+  <rect class="boxg" x="150" y="20" width="440" height="50" rx="8"/><text class="t" x="370" y="42" text-anchor="middle" font-size="14" font-weight="700">텔레옵</text><text class="tm" x="370" y="60" text-anchor="middle" font-size="11">게임패드 / teleop_twist → cmd_vel</text>
+  <rect class="boxa" x="150" y="90" width="440" height="60" rx="8"/><text class="t" x="370" y="114" text-anchor="middle" font-size="14" font-weight="700">CHAMP</text><text class="tm" x="370" y="133" text-anchor="middle" font-size="11">보행 패턴 · 역기구학 · 상태 추정 (Mini Cheetah 설정 참고: chvmp/robots)</text>
+  <rect class="boxa" x="150" y="170" width="440" height="50" rx="8"/><text class="t" x="370" y="192" text-anchor="middle" font-size="14" font-weight="700">ros2_control</text><text class="tm" x="370" y="210" text-anchor="middle" font-size="11">controller_manager · 관절 컨트롤러 (위치 / 임피던스)</text>
+  <rect class="boxo" x="150" y="240" width="440" height="72" rx="8"/><text class="t" x="370" y="262" text-anchor="middle" font-size="14" font-weight="700">하드웨어 인터페이스 (직접 작성)</text><text class="tm" x="370" y="281" text-anchor="middle" font-size="11">MIT 0x008 인코딩·디코딩 · 무릎 벨트 결합 변환 · 부호 표</text><text class="tm" x="370" y="298" text-anchor="middle" font-size="11">하트비트 Life 카운터 감시 · 버스 전압 감시 · 안전 정지 (MBF mbf_ros2 참고)</text>
+  <rect class="box" x="150" y="332" width="440" height="40" rx="8"/><text class="t" x="370" y="357" text-anchor="middle" font-size="13">SocketCAN can0 / can1 (MCP2518FD 드라이버, 1Mbps)</text>
+  <rect class="boxm" x="150" y="388" width="440" height="34" rx="8"/><text class="t" x="370" y="410" text-anchor="middle" font-size="13">GDS68 × 12 (펌웨어 0.5.x, MIT 모드)</text>
+  <path class="s" d="M370 70 V90" marker-end="url(#arF)"/><path class="s" d="M370 150 V170" marker-end="url(#arF)"/><path class="s" d="M370 220 V240" marker-end="url(#arF)"/><path class="s" d="M370 312 V332" marker-end="url(#arF)"/><path class="s" d="M370 372 V388" marker-end="url(#arF)"/>
+  <rect class="box" x="640" y="90" width="230" height="60" rx="8"/><text class="t" x="755" y="114" text-anchor="middle" font-size="13">IMU 노드 (BNO085)</text><text class="tm" x="755" y="132" text-anchor="middle" font-size="11">I2C → 자세 / 각속도</text>
+  <path class="s" d="M640 120 H590" marker-end="url(#arF)"/>
+  <rect class="estf" x="640" y="170" width="230" height="70" rx="8"/><text class="te" x="755" y="194" text-anchor="middle" font-size="13">MuJoCo 시뮬레이션</text><text class="te" x="755" y="212" text-anchor="middle" font-size="11">mujoco_ros2_control (실험적)</text><text class="te" x="755" y="228" text-anchor="middle" font-size="11">하드웨어 인터페이스 대신 연결</text>
+  <path class="estl" d="M640 205 H590"/>
+  <rect class="box" x="10" y="170" width="120" height="70" rx="8"/><text class="t" x="70" y="196" text-anchor="middle" font-size="12">URDF / MJCF</text><text class="tm" x="70" y="214" text-anchor="middle" font-size="10">Fusion →</text><text class="tm" x="70" y="229" text-anchor="middle" font-size="10">ACDC4Robot</text>
+  <path class="s" d="M130 205 H150" marker-end="url(#arF)"/>
+</svg>
+<figcaption><b>그림 19. 소프트웨어 스택</b> (비율 아님). 주황 층(하드웨어 인터페이스)은 직접 작성해야 합니다. 공개된 <code>ros_odrive_gim6010-8</code>은 ODrive 3.x 비호환이라 GDS68에 그대로 쓸 수 없습니다(<a href="https://github.com/nguyen-v/ros_odrive_gim6010-8">README</a>). 가장 가까운 참고 코드는 MBF(<a href="https://github.com/adwng/mbf_ros2">adwng/mbf_ros2</a>)입니다.</figcaption>
+</figure>
+
+<figure>
+<svg viewBox="0 0 960 190" role="img" aria-label="개발 순서">
+  <g font-size="12">
+    <rect class="boxg" x="10" y="30" width="170" height="120" rx="10"/><text class="t" x="95" y="55" text-anchor="middle" font-weight="700">① 모터 1개</text><text class="tm" x="95" y="77" text-anchor="middle" font-size="11">CANable + python-can</text><text class="tm" x="95" y="94" text-anchor="middle" font-size="11">ID·1Mbps 설정, MIT 왕복</text><text class="tm" x="95" y="111" text-anchor="middle" font-size="11">토크·열·백래시 시험</text>
+    <rect class="boxa" x="200" y="30" width="170" height="120" rx="10"/><text class="t" x="285" y="55" text-anchor="middle" font-weight="700">② 다리 1개</text><text class="tm" x="285" y="77" text-anchor="middle" font-size="11">Pi 5 + HAT, 3축</text><text class="tm" x="285" y="94" text-anchor="middle" font-size="11">벨트 결합 변환, 역기구학</text><text class="tm" x="285" y="111" text-anchor="middle" font-size="11">스쿼트·낙하 시험</text>
+    <rect class="estf" x="390" y="30" width="170" height="120" rx="10"/><text class="t" x="475" y="55" text-anchor="middle" font-weight="700">③ 시뮬레이션</text><text class="tm" x="475" y="77" text-anchor="middle" font-size="11">Fusion → MJCF</text><text class="tm" x="475" y="94" text-anchor="middle" font-size="11">MuJoCo에서 CHAMP 보행</text><text class="tm" x="475" y="111" text-anchor="middle" font-size="11">점프 토크 확인 (②와 병행)</text>
+    <rect class="boxo" x="580" y="30" width="170" height="120" rx="10"/><text class="t" x="665" y="55" text-anchor="middle" font-weight="700">④ 전체 로봇</text><text class="tm" x="665" y="77" text-anchor="middle" font-size="11">12축, 2버스</text><text class="tm" x="665" y="94" text-anchor="middle" font-size="11">기립 → 보행 → 트롯</text><text class="tm" x="665" y="111" text-anchor="middle" font-size="11">250Hz부터</text>
+    <rect class="boxp" x="770" y="30" width="170" height="120" rx="10"/><text class="t" x="855" y="55" text-anchor="middle" font-weight="700">⑤ 점프 10cm</text><text class="tm" x="855" y="77" text-anchor="middle" font-size="11">필요하면 500Hz</text><text class="tm" x="855" y="94" text-anchor="middle" font-size="11">(Teensy 3버스 검토)</text><text class="tm" x="855" y="111" text-anchor="middle" font-size="11">착지 충격 확인</text>
+  </g>
+  <path class="s2" d="M180 90 H200" marker-end="url(#arF)"/><path class="s2" d="M370 90 H390" marker-end="url(#arF)"/><path class="s2" d="M560 90 H580" marker-end="url(#arF)"/><path class="s2" d="M750 90 H770" marker-end="url(#arF)"/>
+</svg>
+<figcaption><b>그림 20. 개발 순서</b> (비율 아님). ③ 시뮬레이션은 ②와 병행합니다.</figcaption>
+</figure>
+
+<figure>
+<svg viewBox="0 0 900 360" role="img" aria-label="Fusion 컴포넌트 구조">
+  <g font-size="12">
+    <rect class="box" x="20" y="20" width="200" height="34" rx="6"/><text class="t" x="120" y="42" text-anchor="middle" font-weight="700">Azunyang (최상위 어셈블리)</text>
+    <rect class="boxa" x="60" y="80" width="220" height="50" rx="6"/><text class="t" x="170" y="100" text-anchor="middle" font-weight="700">base_link</text><text class="tm" x="170" y="117" text-anchor="middle" font-size="10">몸통 판금 · 배터리 · 전장 · 외전 모터 ×4</text>
+    <rect class="boxa" x="320" y="80" width="250" height="50" rx="6"/><text class="t" x="445" y="100" text-anchor="middle" font-weight="700">FL_abad_link</text><text class="tm" x="445" y="117" text-anchor="middle" font-size="10">외전 브래킷 · 고관절 모터 · 무릎 모터 · 20T</text>
+    <rect class="boxa" x="320" y="160" width="250" height="50" rx="6"/><text class="t" x="445" y="180" text-anchor="middle" font-weight="700">FL_hip_link (상퇴)</text><text class="tm" x="445" y="197" text-anchor="middle" font-size="10">안판 · 바깥판 · 6806ZZ · 아이들러 · 벨트</text>
+    <rect class="boxa" x="320" y="240" width="250" height="50" rx="6"/><text class="t" x="445" y="260" text-anchor="middle" font-weight="700">FL_knee_link (하퇴)</text><text class="tm" x="445" y="277" text-anchor="middle" font-size="10">하퇴 · 30T 풀리 · 무릎 피벗</text>
+    <rect class="estf" x="320" y="310" width="250" height="40" rx="6"/><text class="te" x="445" y="335" text-anchor="middle">FL_foot (fixed, 선택: 접촉 판정용)</text>
+    <text class="tc" x="600" y="110" font-size="11">FL_abad_joint: revolute, 축 +x, 원점 = 외전 모터 출력면 중심</text>
+    <text class="tc" x="600" y="190" font-size="11">FL_hip_joint: revolute, 축 +y, 원점 = 고관절 축</text>
+    <text class="tc" x="600" y="270" font-size="11">FL_knee_joint: revolute, 축 +y, 원점 = 무릎 축</text>
+    <text class="tm" x="600" y="335" font-size="11">FR / RL / RR도 같은 구조 (이름 접두어만 변경)</text>
+  </g>
+  <path class="s" d="M120 54 V80 M280 105 H320 M445 130 V160 M445 210 V240 M445 290 V310"/>
+</svg>
+<figcaption><b>그림 21. Fusion 컴포넌트 구조 (URDF/MJCF 내보내기용)</b> (비율 아님). 링크 하나 = 최상위 컴포넌트 하나로 두고, 컴포넌트 사이는 Fusion Joint(Revolute)로 연결하며 Joint 이름 = URDF 조인트 이름으로 맞춥니다 <span class="tag t-est">권장</span>. 벨트 결합은 URDF에 넣지 않고 무릎을 직접 구동 관절로 모델링한 뒤, 하드웨어 인터페이스에서 변환합니다. ACDC4Robot은 MJCF 경로가 가장 잘 검증됐고 URDF 출력은 재검증되지 않았습니다(<a href="https://github.com/ACDC4Robot/Fusion360">README</a>). ACDC4Robot의 세부 규칙(중첩 허용 여부 등)은 확인 불가입니다.</figcaption>
+</figure>
+
+<!-- ============ 7 ============ -->
+<h2 class="sec" id="s7">7. Fusion 설계 가이드</h2>
+<h3>모델링 순서</h3>
+<ol>
+<li><b>마스터 스케치(골격)</b>: base_link 원점, 고관절 4점(±190, ±120), 외전 축(y = ±45), 다리 선(stance h = 280, crouch h = 200)</li>
+<li><b>액추에이터 STEP 배치</b>: 드라이버 포함 STEP 16개(예비 포함 시) 대신 1개를 파생(Derive)해서 재사용. 플랜지 치수를 실측해 그림 9를 확정</li>
+<li><b>다리 링크</b>: 상퇴 안판·바깥판, 하퇴, 풀리 어댑터, 아이들러 장공</li>
+<li><b>몸통</b>: 판금(Sheet Metal) 규칙으로 윗판·아랫판·격벽. 외전 모터 마운트</li>
+<li><b>전장 공간</b>: 배터리, Pi 5 + HAT, 접촉기, 퓨즈, 분배 버스, E-stop 위치와 케이블 경로</li>
+<li><b>커버</b>: PETG, 통풍구(Pi와 모터 열)</li>
+</ol>
+<h3>User Parameters (그대로 입력)</h3>
+<div class="tw"><table>
+<tr><th>이름</th><th>값 / 식</th><th>단위</th><th>설명</th><th>근거</th></tr>
+<tr><td><code>L_thigh</code></td><td>200</td><td>mm</td><td>상퇴 길이 (고관절~무릎)</td><td>MC 0.209 참고</td></tr>
+<tr><td><code>L_shank</code></td><td>200</td><td>mm</td><td>하퇴 길이 (무릎~발 중심)</td><td>MC 0.195 참고</td></tr>
+<tr><td><code>hip_spacing</code></td><td>380</td><td>mm</td><td>앞뒤 고관절 축 간격</td><td>MC 몸통 0.38</td></tr>
+<tr><td><code>body_L</code></td><td>300</td><td>mm</td><td>몸통 프레임 길이</td><td><span class="est">추정 설계값</span></td></tr>
+<tr><td><code>body_W</code></td><td>200</td><td>mm</td><td>몸통 프레임 외폭</td><td>사용자 확정값</td></tr>
+<tr><td><code>body_H</code></td><td>100</td><td>mm</td><td>몸통 높이</td><td><span class="est">추정</span></td></tr>
+<tr><td><code>abad_y</code></td><td>45</td><td>mm</td><td>외전 축 y 위치 (±)</td><td><span class="est">추정 설계값</span></td></tr>
+<tr><td><code>abad_x</code></td><td>125</td><td>mm</td><td>외전 모터 중심 x (±)</td><td><span class="est">추정 설계값</span></td></tr>
+<tr><td><code>abad_offset</code></td><td>75</td><td>mm</td><td>외전 축 → 다리 중심면</td><td>사용자 확정값 (70~80)</td></tr>
+<tr><td><code>leg_y</code></td><td>abad_y + abad_offset</td><td>mm</td><td>다리 중심면 (= 120)</td><td>계산</td></tr>
+<tr><td><code>act_D</code></td><td>80</td><td>mm</td><td>액추에이터 외경</td><td>제조사</td></tr>
+<tr><td><code>act_L</code></td><td>40</td><td>mm</td><td>드라이버 포함 길이 (미포함 29.5)</td><td>제조사</td></tr>
+<tr><td><code>flange_BC</code></td><td>74</td><td>mm</td><td>8-M3 원주 (확인 필요)</td><td>도면 표기</td></tr>
+<tr><td><code>pilot_D</code></td><td>20.4</td><td>mm</td><td>중심 보스 (±0.05)</td><td>도면 표기</td></tr>
+<tr><td><code>htd_p</code></td><td>5</td><td>mm</td><td>HTD5M 피치</td><td>규격</td></tr>
+<tr><td><code>Ts</code> / <code>Tl</code></td><td>20 / 30</td><td>(단위 없음)</td><td>작은 / 큰 풀리 이 수</td><td>설계</td></tr>
+<tr><td><code>pd_s</code></td><td>Ts * htd_p / PI</td><td>mm</td><td>= 31.83</td><td>계산</td></tr>
+<tr><td><code>pd_l</code></td><td>Tl * htd_p / PI</td><td>mm</td><td>= 47.75</td><td>계산</td></tr>
+<tr><td><code>knee_ratio</code></td><td>Tl / Ts</td><td>(단위 없음)</td><td>= 1.5</td><td>계산</td></tr>
+<tr><td><code>belt_C</code></td><td>L_thigh</td><td>mm</td><td>벨트 축간거리</td><td>설계</td></tr>
+<tr><td><code>belt_L</code></td><td>525</td><td>mm</td><td>벨트 길이 (105T)</td><td>계산 525.3</td></tr>
+<tr><td><code>belt_w</code></td><td>15</td><td>mm</td><td>벨트 폭 (15~20 검토)</td><td><span class="est">하중 확인 필요</span></td></tr>
+<tr><td><code>stance_h</code> / <code>crouch_h</code></td><td>280 / 200</td><td>mm</td><td>서 있음 / 웅크림 고관절~발</td><td>설계</td></tr>
+<tr><td><code>foot_D</code></td><td>30</td><td>mm</td><td>발 지름</td><td><span class="est">추정</span></td></tr>
+<tr><td><code>brg_OD</code> / <code>brg_ID</code> / <code>brg_W</code></td><td>42 / 30 / 7</td><td>mm</td><td>6806ZZ</td><td>규격</td></tr>
+<tr><td><code>y_hipmot</code> / <code>y_belt</code> / <code>y_kneemot</code></td><td>65 / 108 / 139</td><td>mm</td><td>고관절 스택 적층 시작 위치</td><td><span class="est">추정 설계값</span></td></tr>
+<tr><td><code>plate_t</code></td><td>3</td><td>mm</td><td>판금 두께 (Al 5052)</td><td><span class="est">추정</span></td></tr>
+<tr><td><code>fit_brg</code></td><td>0.10</td><td>mm</td><td>베어링 구멍 = OD + fit_brg</td><td><span class="est">시편으로 보정</span></td></tr>
+<tr><td><code>clr_bolt3</code> / <code>clr_bolt4</code></td><td>3.4 / 4.5</td><td>mm</td><td>M3 / M4 볼트 관통 구멍</td><td>일반 관행</td></tr>
+</table></div>
+
+<h3>FDM 공차 <span class="tag t-est">추정, 시편으로 보정</span></h3>
+<div class="tw"><table>
+<tr><th>부위</th><th>시작값</th><th>보정 방법</th></tr>
+<tr><td>베어링 압입 (6806ZZ OD 42)</td><td>구멍 = 42.05~42.15</td><td>0.05mm 간격 링 시편 3~5개를 뽑아 손으로 눌러 들어가는 값 선택</td></tr>
+<tr><td>열융착 인서트 (M3)</td><td>판매처 권장 구멍 지름 (확인 불가)</td><td>구매한 인서트 외경을 재고 판매처 표를 확인. 깊이 = 인서트 길이 + 1mm</td></tr>
+<tr><td>풀리 보어 / 어댑터</td><td>틈새 0.2mm, 무두볼트 + 키 또는 D컷</td><td>알리 풀리는 보어 5~20mm 옵션. 어댑터는 플랜지 M3로 고정하고 보어에 의존하지 않는 구조 권장</td></tr>
+<tr><td>볼트 관통</td><td>M3 3.4 / M4 4.5</td><td>수평 구멍은 위쪽이 처지니 +0.1mm</td></tr>
+<tr><td>유성·평기어(참고)</td><td>백래시 0.15~0.25mm</td><td>이번 설계에는 없음 (<a href="https://1c3d.com/projects/build-3d-printed-planetary-gearbox-robotics">1c3d</a>)</td></tr>
+</table></div>
+<h3>간섭 확인 체크리스트</h3>
+<ul class="check">
+<li>무릎 최대 굽힘(가정 150°)에서 하퇴가 상퇴 판·아이들러·고관절 모터에 닿지 않는지</li>
+<li>웅크림(h = 200)에서 앞 무릎(x = +17)과 뒤 무릎(x = −17)이 서로 닿지 않는지 (고관절 기준 173.2 안쪽)</li>
+<li>외전 ±각(범위 미정)에서 고관절 스택이 몸통 판·외전 모터와 닿지 않는지</li>
+<li>좌우 다리끼리: 외전을 안쪽으로 최대로 했을 때 발과 하퇴</li>
+<li>무릎 모터 바깥면(y = 179)이 벽·발과 닿지 않는지</li>
+<li>벨트와 바깥판·아이들러 플랜지 사이 틈새 (벨트 폭 15 + 양쪽 1mm 이상)</li>
+<li>배선: 외전 회전과 고관절 회전에서 케이블이 당겨지거나 끼지 않는지 (서비스 루프 길이)</li>
+<li>배터리 분리 경로, E-stop 손 접근성, Pi 통풍</li>
+</ul>
+
+<!-- ============ 8 ============ -->
+<h2 class="sec" id="s8">8. 다음 계획 (로드맵)</h2>
+<figure>
+<svg viewBox="0 0 920 360" role="img" aria-label="간트 차트">
+  <g font-size="11">
+    <!-- grid: x0=180, week=30 -->
+    <g class="tm">
+      <text class="tm" x="180" y="18">11/16</text><text class="tm" x="300" y="18">12/14</text><text class="tm" x="420" y="18">1/11</text><text class="tm" x="540" y="18">2/8</text><text class="tm" x="660" y="18">3/8</text><text class="tm" x="780" y="18">4/5</text><text class="tm" x="885" y="18">5/3</text>
+    </g>
+    <path class="ax" d="M180 24 V340 M300 24 V340 M420 24 V340 M540 24 V340 M660 24 V340 M780 24 V340 M900 24 V340"/>
+    <text class="t" x="10" y="45">1단계 주문·배송</text><rect class="boxg" x="180" y="33" width="60" height="16" rx="4"/>
+    <text class="t" x="10" y="75">1단계 모터 시험</text><rect class="boxg" x="210" y="63" width="90" height="16" rx="4"/>
+    <text class="t" x="10" y="105">Fusion 마스터 설계</text><rect class="boxa" x="180" y="93" width="150" height="16" rx="4"/>
+    <text class="t" x="10" y="135">MuJoCo 시뮬레이션</text><rect class="estf" x="270" y="123" width="240" height="16" rx="4"/>
+    <text class="t" x="10" y="165">2단계 다리 지그</text><rect class="boxa" x="300" y="153" width="180" height="16" rx="4"/>
+    <text class="t" x="10" y="195">3단계 주문·배송</text><rect class="boxg" x="450" y="183" width="90" height="16" rx="4"/>
+    <text class="t" x="10" y="225">3단계 조립·배선</text><rect class="boxo" x="510" y="213" width="150" height="16" rx="4"/>
+    <text class="t" x="10" y="255">보행·트롯 튜닝</text><rect class="boxo" x="660" y="243" width="150" height="16" rx="4"/>
+    <text class="t" x="10" y="285">10cm 점프</text><rect class="boxp" x="810" y="273" width="90" height="16" rx="4"/>
+    <!-- milestones -->
+    <path class="mkf" d="M300 314 l6 6 l-6 6 l-6 -6z"/><text class="t" x="285" y="342">1단계 통과</text>
+    <path class="mkf" d="M480 314 l6 6 l-6 6 l-6 -6z"/><text class="t" x="460" y="342">다리 통과</text>
+    <path class="mkf" d="M660 314 l6 6 l-6 6 l-6 -6z"/><text class="t" x="640" y="342">첫 기립</text>
+    <path class="mkf" d="M810 314 l6 6 l-6 6 l-6 -6z"/><text class="t" x="795" y="342">트롯</text>
+    <path class="mkf" d="M900 314 l6 6 l-6 6 l-6 -6z"/><text class="t" x="865" y="342">점프</text>
+  </g>
+</svg>
+<figcaption><b>그림 22. 간트 차트 (2026-11-16 ~ 2027-05-02)</b>. 1칸 = 1주, 일정은 모두 <span class="tag t-est">추정</span>입니다. 1단계 배송 예정은 AliExpress 표시 11/18~23 기준입니다.</figcaption>
+</figure>
+
+<div class="tw"><table>
+<tr><th>단계</th><th>목표</th><th>할 일</th><th>살 것 · 비용</th><th>통과 기준 (수치)</th><th>결과물</th></tr>
+<tr><td><b>1. 모터 2개 시험</b></td><td>모터 성능과 통신 확인</td><td>ID·1Mbps 설정, MIT 왕복, 200mm 암 + 로드셀 토크, 열, 백래시, DE 재부팅</td><td>모터 2 + CANable + 전원 + 로드셀 등 <b>약 65만</b></td><td>① 24A에서 <b>≥ 10Nm</b> (Jeremy 실측 11Nm)<br>② 5Nm 30분 후 케이스 <b>≤ 70°C</b> (경고 90°C, 동작 최대 80°C에서 여유를 둔 추정 기준)<br>③ 백래시 <b>≤ 0.3°</b> (제조사 15arcmin = 0.25°)<br>④ 500Hz 10분 동안 Life 카운터 끊김 0<br>⑤ 전원을 다시 켠 뒤 DE 각도 오차 ≤ 0.5° (추정 기준)<br>⑥ 두 개체 토크 차이 ≤ 10%</td><td>토크-전류 곡선 CSV, 온도 로그, 사진, Obsidian 노트 "M1 모터 시험"</td></tr>
+<tr><td><b>2. 다리 1개 지그</b></td><td>벨트·기구·IK 검증</td><td>다리 1개 + 지그 출력, Pi 5 + HAT, 결합 변환, 스쿼트·10cm 낙하</td><td>모터 1 + Pi + HAT + 벨트 + 배터리 + 충전기 <b>약 72만</b></td><td>① 무릎 관절 8Nm에서 벨트 이빨 건너뜀 0<br>② 스쿼트 100회 후 장력 변화 없음<br>③ 낙하 20회 후 파손 0<br>④ 발끝 위치 오차 ≤ 5mm (추정 기준)<br>⑤ 250Hz 30분 안정</td><td>영상, 토크 로그, 수정한 CAD v0.2, 노트 "M2 다리 지그"</td></tr>
+<tr><td><b>3. 전체 조립</b></td><td>12축 로봇 완성</td><td>나머지 11개 구매, 판금 외주, 배선, 전원 보호, 시뮬레이션과 비교</td><td><b>약 244만</b></td><td>① 10분 기립 시 모터 ≤ 60°C (추정 기준)<br>② E-stop 동작 시 0.5초 안에 차단<br>③ 2버스 250Hz 프레임 누락 0</td><td>사진, 무게 실측표, 노트 "M3 조립"</td></tr>
+<tr><td><b>4. 보행·트롯</b></td><td>1차 목표</td><td>CHAMP 튜닝, 상태 추정</td><td>배터리 예비 (선택)</td><td>① 트롯 0.3m/s로 5분 (추정 목표)<br>② 무릎 RMS ≤ 3.5Nm(모터 기준)</td><td>영상, 전력 로그(배터리 시간 실측)</td></tr>
+<tr><td><b>5. 점프</b></td><td>2차 목표</td><td>점프 궤적, 착지 제어, 필요하면 500Hz</td><td>Teensy 4.1 (선택)</td><td>① 10cm 점프 10회 연속 파손 0<br>② 무릎 피크 ≤ 8.5Nm(모터 기준)</td><td>영상, 토크 로그</td></tr>
+</table></div>
+
+<figure>
+<svg viewBox="0 0 960 400" role="img" aria-label="시험 결과 분기도">
+  <g font-size="12">
+    <rect class="boxg" x="20" y="170" width="150" height="56" rx="10"/><text class="t" x="95" y="194" text-anchor="middle" font-weight="700">1단계 시험</text><text class="tm" x="95" y="212" text-anchor="middle" font-size="11">모터 2개</text>
+    <path class="s2" d="M170 198 H210" marker-end="url(#arF)"/>
+    <path class="boxa" d="M300 150 L390 198 L300 246 L210 198 Z"/><text class="t" x="300" y="194" text-anchor="middle" font-size="11">24A 토크</text><text class="t" x="300" y="209" text-anchor="middle" font-size="11">≥ 10Nm?</text>
+    <path class="s2" d="M390 198 H440" marker-end="url(#arF)"/><text class="t" x="398" y="190" font-size="11">예</text>
+    <path class="boxa" d="M530 150 L620 198 L530 246 L440 198 Z"/><text class="t" x="530" y="194" text-anchor="middle" font-size="11">5Nm 30분</text><text class="t" x="530" y="209" text-anchor="middle" font-size="11">≤ 70°C?</text>
+    <path class="s2" d="M620 198 H680" marker-end="url(#arF)"/><text class="t" x="628" y="190" font-size="11">예</text>
+    <rect class="boxg" x="680" y="168" width="260" height="60" rx="10"/><text class="t" x="810" y="192" text-anchor="middle" font-weight="700">계획대로 진행</text><text class="tm" x="810" y="210" text-anchor="middle" font-size="11">8kg · 무릎 1.5:1 · 2버스 250Hz</text>
+    <!-- torque fail -->
+    <path class="s2" d="M300 246 V300" marker-end="url(#arF)"/><text class="t" x="308" y="275" font-size="11">아니오</text>
+    <rect class="boxp" x="170" y="300" width="270" height="86" rx="10"/><text class="t" x="305" y="322" text-anchor="middle" font-weight="700">토크 부족</text><text class="tm" x="305" y="340" text-anchor="middle" font-size="11">① 다른 개체와 비교 · 펌웨어·전류 한계 설정 확인</text><text class="tm" x="305" y="357" text-anchor="middle" font-size="11">② 무릎만 GIM8108-8 (스톨 22Nm, 무게 확인 필요)</text><text class="tm" x="305" y="374" text-anchor="middle" font-size="11">③ 무릎 2:1 + 체중 7kg</text>
+    <!-- thermal fail -->
+    <path class="s2" d="M530 246 V300" marker-end="url(#arF)"/><text class="t" x="538" y="275" font-size="11">아니오</text>
+    <rect class="boxo" x="470" y="300" width="270" height="86" rx="10"/><text class="t" x="605" y="322" text-anchor="middle" font-weight="700">열 초과</text><text class="tm" x="605" y="340" text-anchor="middle" font-size="11">① 무릎 2:1 (RMS 4.95 → 2.61Nm)</text><text class="tm" x="605" y="357" text-anchor="middle" font-size="11">② 체중 7kg (RMS 3.85 → 2.70Nm, 1.5:1)</text><text class="tm" x="605" y="374" text-anchor="middle" font-size="11">③ 팬·방열판 추가 후 재시험</text>
+    <!-- CAN branch -->
+    <rect class="boxa" x="680" y="40" width="260" height="76" rx="10"/><text class="t" x="810" y="62" text-anchor="middle" font-weight="700">CAN 500Hz 끊김 발생 시</text><text class="tm" x="810" y="80" text-anchor="middle" font-size="11">250Hz로 보행 진행 (부하 37.5%)</text><text class="tm" x="810" y="97" text-anchor="middle" font-size="11">점프 단계에서 Teensy 4.1 3버스(500Hz, 50%)</text>
+    <path class="s" stroke-dasharray="5 3" d="M810 168 V116" marker-end="url(#arF)"/>
+  </g>
+</svg>
+<figcaption><b>그림 23. 시험 결과에 따른 분기도</b> (비율 아님). 7kg일 때 1.5:1의 모터 RMS = 3.85 / (1.5 × 0.95) = 2.70Nm입니다.</figcaption>
+</figure>
+
+<div class="grid g2">
+<div class="card"><h4>이번 주에 할 일</h4>
+<ul class="check">
+<li>공식 STEP·도면 다운로드 → Fusion에 배치하고 그림 9 치수 확정</li>
+<li>User Parameters 입력, 마스터 스케치(그림 3~7) 작성</li>
+<li>200mm 토크 시험 암과 로드셀 지그 설계 (Jeremy 방식)</li>
+<li>판매자 질문 정리 (아래 10개, 연락은 직접)</li>
+<li>1단계 구매 결정: 모터 2개는 서로 다른 날 결제 (면세 유지)</li>
+<li>PC에 python-can 설치, CANable 사용 준비</li>
+<li>Obsidian 노트 템플릿: 시험 조건 / 수치 / 사진 / 결론</li>
+<li>6806ZZ·인서트 공차 시편 출력</li>
+</ul></div>
+<div class="card"><h4>판매자 질문 10개</h4>
+<ol style="font-size:13px;padding-left:18px">
+<li>온보드 엔코더가 14bit(MA732)인지 16bit(MA600)인지, DE 분해능은? <i>Is the GDS68 onboard encoder 14-bit (MA732) or 16-bit (MA600), and what is the DE resolution?</i></li>
+<li>DE가 전원 투입 직후 호밍 없이 절대각을 주는지 <i>With DE, is the absolute output angle available right at power-up without homing?</i></li>
+<li>출고 펌웨어·HW 버전과 최신 펌웨어 위치 <i>Which firmware/HW version ships now, and where are the latest firmware and changelog?</i></li>
+<li>1Mbps MIT 모드 최대 권장 주기와 응답 지연 <i>Maximum recommended MIT-mode command rate at 1 Mbps, and reply latency?</i></li>
+<li>6S LiPo에서 브레이크 저항이 필요한지, 권장 값 <i>Is an external brake resistor needed on 6S LiPo? Recommended ohms/watts?</i></li>
+<li>5Nm 연속, 강제냉각 없을 때 온도 상승 자료 <i>Temperature-rise data at 5 Nm continuous, 24 V, no forced cooling?</i></li>
+<li>출력 플랜지 볼트 원주와 깊이 치수 도면 <i>Please send a dimensioned drawing of the output-flange bolt circles (8×M3 / 6×M3) and pin holes.</i></li>
+<li>"motor-GDS68-DE" 옵션의 권선 종류 <i>Is the "motor-GDS68-DE" option the 24-slot delta or 48-slot star winding?</i></li>
+<li>캘리브레이션 멈춤 문제가 고쳐졌는지, 24V 권장 resistance_calib_max_voltage <i>Is the calibration-hang issue fixed? Recommended resistance_calib_max_voltage at 24 V?</i></li>
+<li>같은 배치로 받을 수 있는지, CAN ID 사전 설정 가능 여부 <i>Can 12–14 units come from one batch, with CAN IDs 1–12 pre-set?</i></li>
+</ol></div>
+</div>
+
+<!-- ============ 9 ============ -->
+<h2 class="sec" id="s9">9. 부품 목록과 예산</h2>
+<p class="note">가격은 2026-11-12 기준입니다. "알리" = AliExpress KR 해외 판매가(한국 VAT 미포함). 국내가는 VAT 표기를 따로 적었습니다. 링크는 각 행에 있습니다.</p>
+<div class="tw"><table>
+<tr><th>단계</th><th>부품</th><th>모델 / 규격</th><th>수량</th><th>개당 가격(원)</th><th>구매처</th><th>링크</th></tr>
+<tr><td rowspan="9">1</td><td>액추에이터</td><td>GIM6010-8 motor-GDS68-DE</td><td>2</td><td>147,600 + 배송 7,714</td><td>알리 steadywin Store</td><td><a href="https://ko.aliexpress.com/item/1005006339337286.html">링크</a></td></tr>
+<tr><td>USB-CAN</td><td>CANable 2.0</td><td>1</td><td>41,900 (VAT 별도) + 3,500</td><td>vctec</td><td><a href="https://vctec.co.kr/product/usb-can-%ED%86%B5%EC%8B%A0-canable-v20-can-fd-canable-v20-usb-to-can-adapter/22334">링크</a></td></tr>
+<tr><td>벤치 전원</td><td>Hanmatek HM310T 30V 10A</td><td>1</td><td>127,800</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005004833435425.html">링크</a></td></tr>
+<tr><td>로드셀</td><td>S형 50kg + HX711</td><td>1</td><td>45,400</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005008003972994.html">링크</a></td></tr>
+<tr><td>케이블</td><td>XT30(2+2) 연장</td><td>2</td><td>4,460</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005012775760038.html">링크</a></td></tr>
+<tr><td>전선</td><td>실리콘 2핀 14AWG 등</td><td>1</td><td>7,400부터</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005012751401729.html">링크</a></td></tr>
+<tr><td>인서트·볼트</td><td>M3 황동 100개 + M3/M4 세트</td><td>1</td><td>3,600 + 약 15,000 (추정)</td><td>알리 / 국내</td><td>-</td></tr>
+<tr><td>베어링</td><td>6806ZZ (중국산)</td><td>2</td><td>950</td><td>베어링스토어</td><td><a href="https://bearingstore.co.kr/product/중국산-볼베어링-6806zz-내경30-외경42-두께7/11399">링크</a></td></tr>
+<tr><td>공구</td><td>적외선 온도계, 캘리퍼스, PETG 1kg</td><td>각 1</td><td>확인 불가 (각 2만~3만 원 추정)</td><td>국내</td><td>-</td></tr>
+<tr><td rowspan="8">2</td><td>액추에이터</td><td>GIM6010-8 motor-GDS68-DE</td><td>1</td><td>147,600 + 7,714</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005006339337286.html">링크</a></td></tr>
+<tr><td>상위 컴퓨터</td><td>Raspberry Pi 5 8GB</td><td>1</td><td>161,380 (VAT 별도), 준비 2주</td><td>디바이스마트</td><td><a href="https://www.devicemart.co.kr/goods/view?no=15392299">링크</a></td></tr>
+<tr><td>Pi 전원</td><td>공식 27W</td><td>1</td><td>16,400 (VAT 별도)</td><td>디바이스마트</td><td><a href="https://www.devicemart.co.kr/goods/view?no=15502416">링크</a></td></tr>
+<tr><td>CAN HAT</td><td>Waveshare 2-CH CAN FD HAT</td><td>1</td><td>65,900</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005005315735215.html">링크</a></td></tr>
+<tr><td>풀리</td><td>HTD5M 20T / 30T, 15mm</td><td>1 / 1</td><td>8,992 / 17,800 (세트 리스팅)</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005013415110043.html">20T</a> · <a href="https://ko.aliexpress.com/item/1005013512466651.html">30T</a></td></tr>
+<tr><td>벨트</td><td>HTD5M PU 525mm, 15mm 폭</td><td>1</td><td>9,200부터</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005007071706631.html">링크</a></td></tr>
+<tr><td>배터리 · 충전기</td><td>6S 5000 XT90 (CNHL 등) / ToolkitRC M7AC</td><td>1 / 1</td><td>73,000부터 (6S 옵션 가격 확인 필요) / 81,400</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005013197477565.html">배터리</a> · <a href="https://ko.aliexpress.com/item/1005009325477156.html">충전기</a></td></tr>
+<tr><td>발 소재</td><td>TPU 95A 500g</td><td>1</td><td>14,650</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005012007471380.html">링크</a></td></tr>
+<tr><td rowspan="9">3</td><td>액추에이터</td><td>GIM6010-8 motor-GDS68-DE (예비 포함)</td><td>11</td><td>147,600</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005006339337286.html">링크</a></td></tr>
+<tr><td>IMU</td><td>Adafruit BNO085 (4754)</td><td>1</td><td>31,600</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005010533705883.html">링크</a></td></tr>
+<tr><td>안티스파크</td><td>Amass XT90-S</td><td>1</td><td>2,500</td><td>수성RC</td><td><a href="https://susungrc.com/product/detail.html?cate_no=86&amp;display_group=1&amp;product_no=1452">링크</a></td></tr>
+<tr><td>퓨즈</td><td>MIDI 60A + 홀더</td><td>1</td><td>2,760</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005009732249061.html">링크</a></td></tr>
+<tr><td>E-stop · 접촉기</td><td>22mm 버섯형 / DC 100A 24V 코일</td><td>1 / 1</td><td>5,720 / 14,350</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/1005009505038209.html">E-stop</a> · <a href="https://ko.aliexpress.com/item/1005005457160871.html">접촉기</a></td></tr>
+<tr><td>DC-DC</td><td>24V→5V 5A</td><td>1</td><td>6,970</td><td>알리</td><td><a href="https://ko.aliexpress.com/item/4000302403286.html">링크</a></td></tr>
+<tr><td>케이블</td><td>XT30(2+2) ×12, 실리콘선</td><td>1식</td><td>약 60,000</td><td>알리</td><td>위와 같음</td></tr>
+<tr><td>벨트 세트</td><td>20T + 30T + 525 벨트 ×3</td><td>3</td><td>약 36,000</td><td>알리</td><td>위와 같음</td></tr>
+<tr><td>판금 외주</td><td>Al 5052, 2~3t</td><td>1식</td><td>10만~20만 원 (추정)</td><td>JLCCNC / MakeIT</td><td><a href="https://jlccnc.com/kr">JLCCNC</a> · <a href="https://makeit.ai.kr/services/sheet-metal">MakeIT</a></td></tr>
+<tr><td>선택</td><td>프리차지 / 실시간 CAN</td><td>mjbots power_dist r4.5b / Teensy 4.1 + SN65HVD230 ×3</td><td>1</td><td>$149 / $31.50 + 3,890×3</td><td>mjbots / SparkFun · vctec</td><td><a href="https://mjbots.com/collections/accessories">mjbots</a> · <a href="https://www.sparkfun.com/teensy-4-1.html">Teensy</a></td></tr>
+</table></div>
+
+<div class="grid g2">
+<figure>
+<div class="chartbox"><canvas id="chCost" aria-label="단계별 비용 누적"></canvas></div>
+<figcaption><b>그림 24. 단계별 비용과 누적 비용 (만 원)</b>. 1단계 65 → 2단계 72 → 3단계 244, 누적 381. 3단계 액추에이터를 분할 결제하면 누적 약 340입니다. 일부 <span class="tag t-est">추정</span>을 포함합니다.</figcaption>
+</figure>
+<figure>
+<div class="chartbox"><canvas id="chSplit" aria-label="분할 결제 비교"></canvas></div>
+<figcaption><b>그림 25. 액추에이터 분할 결제 vs 한 번에 결제 (만 원)</b>. 분할 = 하루 1개(155,314원 × N, 면세). 한 번에 = 147,600 × N × 1.188(관세 8% + VAT 10%) + 배송 3만(추정). 면세 기준은 물품가 $150 이하이고, 같은 판매자에게 같은 날 산 물건은 합산됩니다(<a href="https://www.customs.go.kr/kcs/ad/tax/BuyTaxCalculation.do">관세청</a>). 분할 구매가 자가사용으로 인정될지는 세관 판단이라 <span class="tag t-na">확인 불가</span>입니다.</figcaption>
+</figure>
+</div>
+
+<!-- ============ 10 ============ -->
+<h2 class="sec" id="s10">10. 리스크와 미확인 항목</h2>
+<div class="tw"><table>
+<tr><th>리스크</th><th>영향</th><th>가능성</th><th>대응</th></tr>
+<tr><td>9kg 트롯에서 무릎 과열</td><td>높음</td><td>중간 (직결이면 높음)</td><td>무릎 1.5:1 벨트, 1단계 열 시험, 체중 7kg 대안</td></tr>
+<tr><td>벨트 이빨 건너뜀·장력 저하</td><td>높음</td><td>중간 (TOPS·quad A1 사례)</td><td>아이들러 장공, 15~20mm 폭, 2단계 100회 시험</td></tr>
+<tr><td>폐쇄형 펌웨어 버그 (캘리브레이션 멈춤 등)</td><td>중간</td><td>중간</td><td>Motor Wizard로 설정, 전압 16V 우회법, 펌웨어 버전 기록</td></tr>
+<tr><td>CAN 프레임 누락</td><td>중간</td><td>중간 (MBF 사례)</td><td>2버스 250Hz, Life 카운터 감시, Teensy 대안</td></tr>
+<tr><td>3D 프린팅 부품 파손 (풀리 어댑터·하퇴)</td><td>중간</td><td>중간 (Aaed 점프 중 다리 파손)</td><td>하중 부품은 알루미늄, PETG 부품은 시험 후 보강</td></tr>
+<tr><td>개체 간 품질 편차</td><td>중간</td><td>확인 불가</td><td>1단계에서 2개 비교, 예비 2개</td></tr>
+<tr><td>관세·자가사용 판단</td><td>낮음 (비용)</td><td>확인 불가</td><td>관세청 125 문의, 한 번에 사는 경우의 비용도 예산에 반영</td></tr>
+<tr><td>LiPo 화재·과방전</td><td>높음</td><td>낮음</td><td>세이프백, 저전압 정지, 밸런스 충전, 퓨즈</td></tr>
+<tr><td>E-stop 시 로봇이 주저앉음</td><td>낮음</td><td>높음 (구조상)</td><td>소프트 댐핑 정지 + 하드 차단 2단계</td></tr>
+</table></div>
+<h3>"확인 불가" 항목과 확인 방법</h3>
+<div class="tw"><table>
+<tr><th>항목</th><th>확인 방법</th><th>시점</th></tr>
+<tr><td>엔코더 실제 분해능 (14/16bit)</td><td>odrivetool로 <code>encoder.config.cpr</code> 읽기 + 판매자 질문 1</td><td>1단계</td></tr>
+<tr><td>DE 분해능, 전원 투입 직후 절대각 정확도</td><td><code>sec_enc_cpr</code> 확인, 재부팅 반복 시험</td><td>1단계</td></tr>
+<tr><td>출력 플랜지 구멍 원주와 위상</td><td>STEP 측정 + 실물 캘리퍼스</td><td>이번 주</td></tr>
+<tr><td>MIT 모드 최대 주기·지연</td><td>Life 카운터와 타임스탬프로 실측</td><td>1단계</td></tr>
+<tr><td>연속 토크 온도 상승</td><td>5Nm 30분 열 시험</td><td>1단계</td></tr>
+<tr><td>회생 처리 필요 여부</td><td>벤치 전원으로 급감속 시험, 버스 전압 로깅</td><td>1단계</td></tr>
+<tr><td>GDS68 커넥터 규격, CAN 입출력 쌍 유무</td><td>실물 확인</td><td>1단계</td></tr>
+<tr><td>알리 옵션의 권선 종류</td><td>판매자 질문 8, 상저항 측정(0.44Ω 기준)</td><td>1단계</td></tr>
+<tr><td>HTD5M 15mm 벨트 허용 하중</td><td>벨트 제조사 표, 2단계 시험</td><td>2단계</td></tr>
+<tr><td>무릎 피벗 베어링 규격</td><td>하퇴 설계 때 하중으로 선정</td><td>2단계 설계</td></tr>
+<tr><td>점프 때 고관절·외전 토크</td><td>MuJoCo 시뮬레이션</td><td>2단계 병행</td></tr>
+<tr><td>다리당 피크 전류</td><td>0x017로 버스 전류 로깅</td><td>2단계</td></tr>
+<tr><td>MCP2518FD 1Mbps 다프레임 성능</td><td>candump으로 부하 시험</td><td>2단계</td></tr>
+<tr><td>Pi 5 실측 전력</td><td>USB 전력계</td><td>2단계</td></tr>
+<tr><td>6S 5000mAh 실제 무게·국내 가격</td><td>국내 RC점 조회</td><td>2단계 구매 전</td></tr>
+<tr><td>판금 외주 가격</td><td>DXF 업로드 견적 (CutON, JLCCNC)</td><td>3단계 전</td></tr>
+<tr><td>Mini Cheetah 무릎 벨트 여부 (1차 자료)</td><td>Katz 논문, 공개 사진</td><td>참고용</td></tr>
+<tr><td>ACDC4Robot 세부 규칙, URDF 출력 품질</td><td>시험 모델로 내보내기</td><td>2단계</td></tr>
+<tr><td>열융착 인서트 권장 구멍</td><td>구매 제품 판매처 표 + 시편</td><td>1단계</td></tr>
+<tr><td>분할 구매의 자가사용 인정</td><td>관세청 125 문의</td><td>3단계 구매 전</td></tr>
+</table></div>
+
+<!-- ============ sources ============ -->
+<h2 class="sec" id="src">출처</h2>
+<ul style="font-size:13.5px">
+<li>SteadyWin: <a href="https://www.steadywin.cn/en/pd.jsp?id=116">제품 페이지</a> · <a href="https://14180476.s21i.faiusr.com/61/ABUIABA9GAAghZu6wQYo7L6lVw.pdf">매뉴얼 rev2.2</a> · <a href="https://sdalal1.github.io/assets/pdf/SteadyWin_GIM6010-8_Manual_rev1.pdf">영문 rev1.2</a> · <a href="https://14180476.s21i.faiusr.com/61/ABUIABAAGAAgjJnprwYon6erHw.stp">STEP</a> · <a href="https://14180476.s21i.faiusr.com/61/ABUIABA9GAAgt87AxQYolOC2pAE.pdf">설치 도면</a> · <a href="https://www.steadywin.cn/en/col.jsp?id=124">Motor Wizard</a> · <a href="https://gitee.com/cyberbeast/mwmotorsdk">SDK</a></li>
+<li>사례·이슈: <a href="https://hackaday.io/project/202366-the-unnamed-spider-bot/log/239789-steadywin-gim6010-8-stock-controller-vs-odrive-vs-tinymovr">Jeremy 토크 실측</a> · <a href="https://discourse.odriverobotics.com/t/gim6010-8-calibration-problem/13286">캘리브레이션 이슈</a> · <a href="https://discourse.openrobotics.org/t/mbf-my-quadruped-robot-dog/54828">MBF</a> · <a href="https://github.com/adwng/mbf_ros2">mbf_ros2</a> · <a href="http://varofla.com/blog/2-wheel-leg-robot-2">varofla</a> · <a href="https://www.aaedmusa.com/projects/impulse">Aaed Impulse</a> · <a href="https://github.com/nguyen-v/ros_odrive_gim6010-8">ros_odrive 포크</a></li>
+<li>기구: <a href="https://github.com/mit-biomimetics/Cheetah-Software/blob/master/common/include/Dynamics/MiniCheetah.h">MiniCheetah.h</a> · <a href="https://dspace.mit.edu/handle/1721.1/118671">Katz 논문</a> · <a href="https://arxiv.org/pdf/2110.02799">MC 다리 질량</a> · <a href="https://blog.mjbots.com/2020/04/17/quad-a1-leg-updates">quad A1 다리</a> · <a href="https://hackaday.io/project/192122/logs?sort=oldest">TOPS 로그</a> · <a href="https://judsonkyle.com/new-quadruped-platform">구동 방식 비교</a></li>
+<li>제어·소프트웨어: <a href="https://github.com/chvmp/robots">CHAMP robots</a> · <a href="https://github.com/ACDC4Robot/Fusion360">ACDC4Robot</a> · <a href="https://docs.isaacsim.omniverse.nvidia.com/6.2.0/installation/requirements.html">Isaac Sim 사양</a> · <a href="https://docs.odriverobotics.com/v/0.6.7/guides/can-guide.html">ODrive CAN 가이드</a> · <a href="https://github.com/hardbyte/python-can/issues/474">MCP2515 누락</a> · <a href="https://www.pishop.us/product/2-channel-isolated-can-fd-expansion-hat-for-raspberry-pi-multi-protections/">CAN FD HAT 사양</a></li>
+<li>전원·관세: <a href="https://www.unitree.com/mobile/A1/battery">A1 배터리</a> · <a href="https://github.com/mjbots/power_dist/blob/main/docs/reference.md">power_dist</a> · <a href="https://www.customs.go.kr/kcs/ad/tax/BuyTaxCalculation.do">관세청 직구</a> · <a href="https://custommate.co.kr/hs/8501">HS 8501 세율 8%</a></li>
+<li>소재·외주: <a href="https://wiki.bambulab.com/filament-acc/abs-asa-pc/bambu_pla_basic_technical_data_sheet.pdf">Bambu PLA TDS</a> · <a href="https://kr.store.bambulab.com/products/paht-cf">PAHT-CF</a> · <a href="https://jlccnc.com/kr">JLCCNC</a> · <a href="https://makeit.ai.kr/services/sheet-metal">MakeIT</a> · <a href="https://cuton.co.kr/">CutON</a></li>
+<li>환율: 2026-11-12 07:00 달러-원 1,337.5원 (연합인포맥스) → 1,340원으로 반올림</li>
+</ul>
+<p class="note">이 보고서는 조사 자료와 계산만으로 만들었습니다. 구매, 주문, 판매자 연락은 하지 않았습니다.</p>
+</main>
+</div>
+
+<script>
+(function(){
+  var root = document.documentElement;
+  var btn = document.getElementById('themeBtn');
+  btn.addEventListener('click', function(){
+    var cur = root.getAttribute('data-theme');
+    var dark = cur ? cur === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    renderCharts();
+  });
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){ if(!root.getAttribute('data-theme')) renderCharts(); });
+  }
+  var charts = [];
+  function v(n){ return getComputedStyle(root).getPropertyValue(n).trim(); }
+  function line(label, val, n, color, dash){
+    var arr = []; for (var i=0;i<n;i++) arr.push(val);
+    return {type:'line', label:label, data:arr, borderColor:color, borderDash:dash||[6,4], borderWidth:2, pointRadius:0, fill:false, order:0};
+  }
+  function renderCharts(){
+    if (typeof Chart === 'undefined') {
+      document.querySelectorAll('canvas').forEach(function(c){
+        var p = document.createElement('p'); p.className='note';
+        p.textContent = '차트 라이브러리(Chart.js 4.4.1, cdnjs)를 불러오지 못했습니다. 인터넷에 연결된 상태로 다시 열어 주세요. 수치는 캡션과 식에 모두 적혀 있습니다.';
+        c.parentNode.replaceChild(p, c);
+      });
+      return;
+    }
+    charts.forEach(function(c){ c.destroy(); }); charts = [];
+    var fg = v('--fg'), muted = v('--muted'), grid = v('--line');
+    var cAl=v('--al'), cPetg=v('--petg'), cBuy=v('--buy'), cMot=v('--motor'), cTpu=v('--tpu'), cEst=v('--est'), cPwr=v('--pwr'), cCan=v('--can'), cOk=v('--ok'), cWarn=v('--warn'), cBad=v('--bad'), cAcc=v('--accent');
+    Chart.defaults.color = fg; Chart.defaults.borderColor = grid;
+    Chart.defaults.font.family = '-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+    var common = {responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:fg, boxWidth:12}}}};
+
+    charts.push(new Chart(document.getElementById('chWeight'), {
+      type:'doughnut',
+      data:{labels:['액추에이터 12개 4.66 (제조사)','배터리 0.75 (추정)','몸통 프레임 0.90 (추정)','다리 4개 0.80 (추정)','전장 0.35 (추정)','배선 0.25 (추정)','볼트·베어링 0.25 (추정)'],
+        datasets:[{data:[4.66,0.75,0.90,0.80,0.35,0.25,0.25], backgroundColor:[cMot,cPwr,cAl,cPetg,cAcc,cEst,cBuy], borderColor:v('--bg'), borderWidth:2}]},
+      options:Object.assign({}, common, {plugins:{legend:{position:'right', labels:{color:fg}}, tooltip:{callbacks:{label:function(c){return c.label+' kg';}}}, title:{display:true, text:'합계 7.96 kg', color:fg}}})
+    }));
+
+    var tl = ['정지','트롯 피크','트롯 RMS','점프 피크 (10cm)'];
+    charts.push(new Chart(document.getElementById('chTorque'), {
+      type:'bar',
+      data:{labels:tl, datasets:[
+        {label:'외전 (추정 가정 포함)', data:[1.55,4.85,2.4,null], backgroundColor:cEst+'99', order:1},
+        {label:'고관절 (추정 가정 포함)', data:[1.1,6.4,3.2,null], backgroundColor:cCan+'aa', order:1},
+        {label:'무릎 관절', data:[3.15,9.90,4.95,11.5], backgroundColor:cPetg+'cc', order:1},
+        {label:'무릎 모터 (1.5:1, η0.95)', data:[2.21,6.95,3.47,8.07], backgroundColor:cOk+'cc', order:1},
+        line('정격 5 Nm', 5, 4, cWarn),
+        line('사용 가능 피크 8.5 Nm (추정)', 8.5, 4, cEst, [2,3]),
+        line('스톨 11 Nm', 11, 4, cBad)
+      ]},
+      options:Object.assign({}, common, {scales:{y:{title:{display:true,text:'토크 (Nm)'}, beginAtZero:true, max:13}}})
+    }));
+
+    var kl = ['1:1 직결','1.5:1 (추천)','2:1'];
+    charts.push(new Chart(document.getElementById('chKnee'), {
+      type:'bar',
+      data:{labels:kl, datasets:[
+        {label:'트롯 피크 (모터 Nm)', data:[9.90,6.95,5.21], backgroundColor:cPetg+'cc', yAxisID:'y', order:2},
+        {label:'트롯 RMS (모터 Nm)', data:[4.95,3.47,2.61], backgroundColor:cCan+'aa', yAxisID:'y', order:2},
+        {label:'점프 피크 (모터 Nm)', data:[11.5,8.07,6.05], backgroundColor:cPwr+'aa', yAxisID:'y', order:2},
+        {type:'line', label:'무릎 최고 속도 (rad/s, 무부하)', data:[44.0,29.3,22.0], borderColor:cAcc, backgroundColor:cAcc, yAxisID:'y2', borderWidth:2.5, pointRadius:5, order:0},
+        Object.assign(line('정격 5', 5, 3, cWarn), {yAxisID:'y'}),
+        Object.assign(line('사용 가능 피크 8.5 (추정)', 8.5, 3, cEst, [2,3]), {yAxisID:'y'}),
+        Object.assign(line('스톨 11', 11, 3, cBad), {yAxisID:'y'})
+      ]},
+      options:Object.assign({}, common, {scales:{
+        y:{position:'left', beginAtZero:true, max:13, title:{display:true,text:'모터 토크 (Nm)'}},
+        y2:{position:'right', beginAtZero:true, max:50, grid:{drawOnChartArea:false}, title:{display:true,text:'속도 (rad/s)'}}
+      }})
+    }));
+
+    var pl = ['MC 고관절','MC 무릎 (×1.55 추정)','우리 고관절 (직결)','우리 무릎 (1.5:1)'];
+    charts.push(new Chart(document.getElementById('chPerKg'), {
+      type:'bar',
+      data:{labels:pl, datasets:[
+        {label:'피크 Nm/kg', data:[1.89,2.93,1.375,1.96], backgroundColor:[cMot+'cc',cEst+'99',cPetg+'cc',cOk+'cc'], order:1},
+        {label:'연속 Nm/kg', data:[0.77,1.19,0.625,0.89], backgroundColor:[cMot+'66',cEst+'55',cPetg+'66',cOk+'66'], order:1},
+        line('보행 기준 피크 1.0', 1.0, 4, cWarn),
+        line('MC 점프급 피크 1.9', 1.9, 4, cBad, [2,3])
+      ]},
+      options:Object.assign({}, common, {scales:{y:{beginAtZero:true, title:{display:true,text:'Nm / kg (몸무게)'}}}})
+    }));
+
+    var cl = ['250 Hz','500 Hz','1000 Hz'];
+    charts.push(new Chart(document.getElementById('chCan'), {
+      type:'bar',
+      data:{labels:cl, datasets:[
+        {label:'버스 1개 (12축)', data:[75,150,300], backgroundColor:cBad+'aa', order:1},
+        {label:'버스 2개 (6축) ← 현재 계획', data:[37.5,75,150], backgroundColor:cAcc+'cc', order:1},
+        {label:'버스 3개 (4축, Teensy)', data:[25,50,100], backgroundColor:cOk+'aa', order:1},
+        {label:'버스 4개 (3축)', data:[18.75,37.5,75], backgroundColor:cPetg+'aa', order:1},
+        line('50% 기준 (추정)', 50, 3, cEst)
+      ]},
+      options:Object.assign({}, common, {scales:{y:{type:'logarithmic', min:10, max:400, title:{display:true,text:'버스 부하율 (%, 로그 축)'}, ticks:{callback:function(val){ return [10,25,50,100,200,400].indexOf(val)>=0 ? val+'%' : ''; }}}}})
+    }));
+
+    charts.push(new Chart(document.getElementById('chCost'), {
+      type:'bar',
+      data:{labels:['1단계','2단계','3단계'], datasets:[
+        {label:'단계 비용 (만 원)', data:[65,72,244], backgroundColor:[cOk+'cc',cAcc+'cc',cPetg+'cc'], order:1},
+        {type:'line', label:'누적 (한 번에 결제)', data:[65,137,381], borderColor:cPwr, backgroundColor:cPwr, borderWidth:2.5, pointRadius:5, order:0},
+        {type:'line', label:'누적 (3단계 분할 결제)', data:[65,137,340], borderColor:cEst, backgroundColor:cEst, borderDash:[6,4], borderWidth:2, pointRadius:4, order:0}
+      ]},
+      options:Object.assign({}, common, {scales:{y:{beginAtZero:true, title:{display:true,text:'만 원'}}}})
+    }));
+
+    charts.push(new Chart(document.getElementById('chSplit'), {
+      type:'bar',
+      data:{labels:['12개','14개 (예비 2)'], datasets:[
+        {label:'하루 1개 분할 (면세)', data:[186.4,217.4], backgroundColor:cOk+'cc'},
+        {label:'한 번에 (관세+VAT 18.8%)', data:[213.4,248.5], backgroundColor:cPwr+'aa'}
+      ]},
+      options:Object.assign({}, common, {scales:{y:{beginAtZero:true, title:{display:true,text:'만 원'}}}})
+    }));
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', renderCharts); else renderCharts();
+})();
+</script>
+</body>
+</html>
