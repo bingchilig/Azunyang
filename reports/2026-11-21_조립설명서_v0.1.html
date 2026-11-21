@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Azunyang 조립 설명서</title>
+<style>
+@page { size: A4; margin: 14mm 13mm 16mm 13mm; }
+* { box-sizing: border-box; }
+body { font-family: "Malgun Gothic", "Noto Sans KR", sans-serif; font-size: 10pt; line-height: 1.55; color: #111; margin: 0; }
+h1 { font-size: 22pt; margin: 0 0 4mm; }
+h2 { font-size: 15pt; border-bottom: 2px solid #1f3864; padding-bottom: 1.5mm; margin: 0 0 4mm; color: #1f3864; }
+h3 { font-size: 11.5pt; margin: 5mm 0 2mm; color: #1f3864; }
+h4 { font-size: 10.5pt; margin: 3.5mm 0 1.5mm; }
+p { margin: 1.5mm 0; }
+.page { page-break-before: always; }
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 3mm; font-size: 9pt; page-break-inside: auto; }
+th, td { border: 1px solid #999; padding: 1.2mm 1.8mm; vertical-align: top; text-align: left; }
+th { background: #e3e9f3; }
+tr { page-break-inside: avoid; }
+.step { display: grid; grid-template-columns: 7mm 1fr; gap: 1.5mm; margin: 1.6mm 0; page-break-inside: avoid; }
+.box { width: 4.2mm; height: 4.2mm; border: 1.3px solid #333; margin-top: 0.8mm; }
+.no { font-weight: bold; }
+.part { font-weight: bold; color: #1f3864; }
+.tag { display: inline-block; font-size: 8pt; padding: 0 1.5mm; border-radius: 1mm; margin-left: 1mm; }
+.warn { background: #fde2d3; border-left: 3px solid #d9480f; padding: 2mm 3mm; margin: 2.5mm 0; page-break-inside: avoid; }
+.note { background: #eef3fa; border-left: 3px solid #1f3864; padding: 2mm 3mm; margin: 2.5mm 0; page-break-inside: avoid; }
+.todo { background: #fff4cc; border-left: 3px solid #b08900; padding: 2mm 3mm; margin: 2.5mm 0; page-break-inside: avoid; }
+pre { font-family: Consolas, "Malgun Gothic", monospace; font-size: 8.6pt; background: #f4f4f4; padding: 2.5mm; border: 1px solid #ccc; white-space: pre-wrap; margin: 2mm 0; page-break-inside: avoid; }
+svg { display: block; margin: 2mm auto; max-width: 100%; }
+svg text { font-family: "Malgun Gothic", sans-serif; }
+.fig { text-align: center; font-size: 8.5pt; color: #444; margin-bottom: 3mm; }
+.cover { height: 250mm; display: flex; flex-direction: column; justify-content: center; }
+.cover .sub { font-size: 12pt; color: #444; }
+.toc li { margin: 1mm 0; }
+.small { font-size: 8.5pt; color: #444; }
+.sig td { height: 14mm; }
+</style>
+</head>
+<body>
+
+<!-- 표지 -->
+<div class="cover">
+  <h1>Azunyang 로봇개<br>조립 설명서</h1>
+  <p class="sub">12자유도 사족보행 로봇 · GIM6010-8 액추에이터 · v0.1</p>
+  <p class="sub">작성 2026-11-21 · 근거 자료: BOM v0.3, 부품리스트_2026-11-21, Fusion 로그(C·D·E 단계), 설계보고서 v0.1</p>
+  <table style="width:70%; margin-top:10mm">
+    <tr><th>문서에 쓰는 번호</th><td><b>(12)</b>처럼 괄호 속 숫자 = <b>부품리스트_2026-11-21</b>의 No (1~80)</td></tr>
+    <tr><th>체크 칸</th><td>□ 칸은 작업을 끝낼 때마다 펜으로 체크</td></tr>
+    <tr><th>상자 색</th><td><span style="background:#fde2d3">주황 = 안전</span> · <span style="background:#eef3fa">파랑 = 원리·팁</span> · <span style="background:#fff4cc">노랑 = 아직 확정 안 됨</span></td></tr>
+  </table>
+  <h3 style="margin-top:12mm">목차</h3>
+  <ol class="toc">
+    <li>원리: 로봇이 움직이는 방법</li>
+    <li>준비: 공구·안전·체결 규칙</li>
+    <li>1단계: 모터 1개 책상 시험</li>
+    <li>2단계: 다리 1개 조립과 시험대</li>
+    <li>3단계: 로봇 전체 조립</li>
+    <li>처음 켜기와 끄기</li>
+    <li>부록: 부품 사용처 표 · 체결 토크 · 미확정 항목 · 점검표</li>
+  </ol>
+</div>
+
+<!-- 1. 원리 -->
+<div class="page">
+<h2>1. 원리: 로봇이 움직이는 방법</h2>
+
+<h3>1-1. 전기와 신호가 흐르는 길</h3>
+<svg width="680" height="250" viewBox="0 0 680 250">
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#c0392b"/></marker>
+        <marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1f5fbf"/></marker></defs>
+  <g font-size="11">
+  <rect x="10" y="20" width="90" height="40" rx="5" fill="#fff" stroke="#333"/><text x="55" y="38" text-anchor="middle">배터리 (52)</text><text x="55" y="53" text-anchor="middle" font-size="9">6S 22.2V</text>
+  <rect x="125" y="20" width="80" height="40" rx="5" fill="#fff" stroke="#333"/><text x="165" y="44" text-anchor="middle">XT90-S (55)</text>
+  <rect x="230" y="20" width="90" height="40" rx="5" fill="#fff" stroke="#333"/><text x="275" y="38" text-anchor="middle">접촉기 (69)</text><text x="275" y="53" text-anchor="middle" font-size="9">E-stop이 코일 차단</text>
+  <rect x="345" y="20" width="85" height="40" rx="5" fill="#fff" stroke="#333"/><text x="387" y="38" text-anchor="middle">주 퓨즈 (80)</text><text x="387" y="53" text-anchor="middle" font-size="9">MIDI 60A</text>
+  <rect x="455" y="20" width="80" height="40" rx="5" fill="#fff" stroke="#333"/><text x="495" y="44" text-anchor="middle">버스바 +/−</text>
+  <rect x="560" y="10" width="110" height="60" rx="5" fill="#fff" stroke="#333"/><text x="615" y="32" text-anchor="middle">다리 4개</text><text x="615" y="48" text-anchor="middle" font-size="9">25A 퓨즈 (9) → XT60 (51)</text><text x="615" y="61" text-anchor="middle" font-size="9">모터 3개씩 = 12개</text>
+  <g stroke="#c0392b" stroke-width="2.5" fill="none" marker-end="url(#a)">
+    <line x1="100" y1="40" x2="122" y2="40"/><line x1="205" y1="40" x2="227" y2="40"/><line x1="320" y1="40" x2="342" y2="40"/><line x1="430" y1="40" x2="452" y2="40"/><line x1="535" y1="40" x2="557" y2="40"/>
+  </g>
+  <rect x="230" y="90" width="90" height="34" rx="5" fill="#fde2d3" stroke="#d9480f"/><text x="275" y="111" text-anchor="middle">E-stop (6)</text>
+  <line x1="275" y1="90" x2="275" y2="62" stroke="#d9480f" stroke-dasharray="4 3"/>
+  <rect x="455" y="100" width="80" height="40" rx="5" fill="#fff" stroke="#333"/><text x="495" y="118" text-anchor="middle">DC-DC (8)</text><text x="495" y="132" text-anchor="middle" font-size="9">24V→5V</text>
+  <line x1="495" y1="62" x2="495" y2="97" stroke="#c0392b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="330" y="170" width="110" height="50" rx="5" fill="#eef3fa" stroke="#1f3864"/><text x="385" y="190" text-anchor="middle">Raspberry Pi 5 (75)</text><text x="385" y="206" text-anchor="middle" font-size="9">+ CAN HAT (76)</text>
+  <line x1="495" y1="142" x2="442" y2="180" stroke="#c0392b" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="180" y="175" width="100" height="40" rx="5" fill="#fff" stroke="#333"/><text x="230" y="193" text-anchor="middle">IMU (74)</text><text x="230" y="207" text-anchor="middle" font-size="9">몸 기울기</text>
+  <line x1="282" y1="195" x2="327" y2="195" stroke="#1f5fbf" stroke-width="2" marker-end="url(#b)"/>
+  <path d="M442,195 L615,195 L615,73" stroke="#1f5fbf" stroke-width="2.5" fill="none" marker-end="url(#b)"/>
+  <text x="530" y="188" text-anchor="middle" fill="#1f5fbf">CAN 2개 버스 (명령 ↔ 상태)</text>
+  <text x="20" y="240" font-size="9" fill="#c0392b">빨강 = 전원</text><text x="100" y="240" font-size="9" fill="#1f5fbf">파랑 = 신호(CAN)</text><text x="200" y="240" font-size="9" fill="#d9480f">점선 = 비상정지 코일 회로</text>
+  </g>
+</svg>
+<div class="fig">그림 1. 시스템 구성 (비율 아님)</div>
+
+<ul>
+  <li><b>Pi 5</b>가 두뇌입니다. IMU로 몸 기울기를 읽고, 다리마다 "이 각도로, 이만큼 단단하게" 명령을 계산해 CAN으로 모터 12개에 <b>초당 250번</b> 보냅니다.</li>
+  <li><b>모터(GIM6010-8)</b> 안에는 드라이버(GDS68)가 들어 있어서, 명령을 받으면 스스로 전류를 조절해 토크를 내고 현재 각도·속도·토크를 돌려보냅니다.</li>
+  <li><b>CAN</b>은 전선 2가닥(CANH·CANL)에 장치 여러 개가 줄줄이 매달린 통신선입니다. 모터마다 ID(1~12)가 있어서 자기 ID로 온 메시지만 듣습니다. 버스 양 끝에만 <b>120Ω 종단저항</b>을 켜서 신호가 끝에서 튕겨 돌아오지 않게 합니다.</li>
+  <li><b>앞다리 6개(ID 1~6)는 can0, 뒷다리 6개(ID 7~12)는 can1</b>에 연결합니다. 한 버스에 12개를 다 달면 통신량이 너무 많기 때문입니다(1Mbps, 250Hz에서 버스 사용률 37.5%).</li>
+</ul>
+
+<h3>1-2. 다리 하나 = 관절 3개 = 모터 3개</h3>
+<table>
+  <tr><th>관절</th><th>움직임</th><th>모터 위치</th><th>힘이 전달되는 길</th><th>CAN ID (FL 기준)</th></tr>
+  <tr><td>외전 (abad)</td><td>다리를 옆으로 벌림</td><td>몸통</td><td>모터 출력 → 외전 링크(U프레임) 직결</td><td>1</td></tr>
+  <tr><td>고관절 (hip)</td><td>다리를 앞뒤로 휘두름</td><td>외전 링크</td><td>모터 출력 → 상퇴(허벅지) 직결</td><td>2</td></tr>
+  <tr><td>무릎 (knee)</td><td>하퇴를 접고 폄</td><td>외전 링크 (고관절과 같은 축)</td><td>모터 → 구동축 → 20T 풀리 → <b>벨트</b> → 30T 풀리 → 하퇴</td><td>3</td></tr>
+</table>
+<div class="note">
+<b>왜 무릎 모터를 무릎이 아니라 고관절 옆에 두나?</b> 다리 끝이 가벼워야 빨리 휘두를 수 있습니다. 무거운 모터(388g)를 몸 가까이 두고 무릎에는 벨트로 힘만 보냅니다. MIT Mini Cheetah와 같은 원리입니다.<br>
+<b>왜 20T → 30T?</b> 풀리 지름 비 1.5배만큼 무릎 토크가 1.5배 커집니다(속도는 1/1.5). 서 있을 때 무릎이 몸무게를 가장 많이 받기 때문입니다.<br>
+<b>모터 자체도 8:1 감속.</b> 정격 5N·m, 최대 약 11N·m. <b>DE(2차 엔코더)</b>는 감속기 뒤 출력축 각도를 직접 읽으므로 전원을 켜자마자 다리 각도를 알 수 있습니다(기준점 잡기 불필요).
+</div>
+
+<h3>1-3. 고관절 스택: 몸 옆 방향(y)으로 쌓이는 순서</h3>
+<svg width="680" height="225" viewBox="0 0 680 225">
+  <g font-size="10">
+  <rect x="20" y="40" width="120" height="120" fill="#dfe7f3" stroke="#333"/><text x="80" y="95" text-anchor="middle">고관절 모터</text><text x="80" y="110" text-anchor="middle" font-size="9">(ID 2)</text>
+  <rect x="140" y="30" width="10" height="140" fill="#b9c3cf" stroke="#333"/><text x="145" y="185" text-anchor="middle" font-size="9">상퇴 안판</text>
+  <rect x="150" y="70" width="90" height="60" fill="#fff" stroke="#333" stroke-dasharray="3 2"/><text x="195" y="96" text-anchor="middle">20T 풀리</text><text x="195" y="110" text-anchor="middle" font-size="9">+ 벨트 15mm</text>
+  <rect x="240" y="30" width="22" height="140" fill="#b9c3cf" stroke="#333"/><text x="251" y="185" text-anchor="middle" font-size="9">바깥판</text>
+  <rect x="243" y="60" width="16" height="80" fill="#f3d27a" stroke="#333"/><text x="251" y="55" text-anchor="middle" font-size="9">6806</text>
+  <rect x="262" y="40" width="120" height="120" fill="#dfe7f3" stroke="#333"/><text x="322" y="95" text-anchor="middle">무릎 모터</text><text x="322" y="110" text-anchor="middle" font-size="9">(ID 3)</text>
+  <rect x="150" y="93" width="150" height="14" fill="#888" opacity="0.6"/><text x="200" y="215" text-anchor="middle" font-size="9" fill="#333">회색 막대 = Ø12 구동축 (6801 ×2, 고정 스핀들 Ø30 안)</text>
+  <line x1="10" y1="100" x2="395" y2="100" stroke="#c00" stroke-dasharray="6 3"/><text x="10" y="175" font-size="9" fill="#c00">빨간 점선 = 고관절 축</text>
+  <g font-size="9" fill="#555"><text x="20" y="20">y = 65</text><text x="128" y="20">105</text><text x="225" y="20">132</text><text x="262" y="20">139</text><text x="365" y="20">179 mm</text></g>
+  <text x="450" y="50" font-size="10">· 상퇴는 <tspan font-weight="bold">안판(모터 출력)</tspan>과</text>
+  <text x="450" y="66" font-size="10">  <tspan font-weight="bold">바깥판(6806 베어링)</tspan> 양쪽으로 지지</text>
+  <text x="450" y="90" font-size="10">· 무릎 모터 → 구동축이 스핀들 안을</text>
+  <text x="450" y="106" font-size="10">  지나 벨트 칸의 20T 풀리를 돌림</text>
+  <text x="450" y="130" font-size="10">· 두 모터 모두 외전 링크에 고정</text>
+  <text x="450" y="146" font-size="10">  → 외전하면 함께 움직임</text>
+  </g>
+</svg>
+<div class="fig">그림 2. 고관절 스택 단면 개념도 (보고서 배치 기준, 치수 mm, 비율 근사)</div>
+
+<h3>1-4. 재료를 고른 이유</h3>
+<table>
+  <tr><th>재료</th><th>쓰는 곳</th><th>이유</th></tr>
+  <tr><td>알루미늄 5052 판금</td><td>몸통 섀시, 외전 마운트·U프레임, 상퇴 판, 모터 장착판</td><td>하중이 지나가는 길. 모터 열에도 강함</td></tr>
+  <tr><td>PETG 출력 (71)</td><td>하퇴, 배터리 트레이, 래치, 커버류, 지그</td><td>가볍고 집에서 출력 가능. <b>PLA 금지</b>: 약 55°C에서 물러짐</td></tr>
+  <tr><td>TPU 95A (65)</td><td>발 패드</td><td>착지 충격 흡수, 미끄럼 방지</td></tr>
+  <tr><td>베어링</td><td>6806(62) 고관절 바깥 / 6801(64) 구동축 / 6001(63) 무릎</td><td>도는 축을 받침. 모터 하나로만 버티면 모터 베어링이 휘는 힘을 못 견딤</td></tr>
+  <tr><td>12.9 강 볼트 (35·36)</td><td>모터 뒷면·출력 체결</td><td>출력 볼트 6개가 마찰로 11N·m를 넘기려면 볼트당 약 765N 예압 필요</td></tr>
+</table>
+</div>
+
+<!-- 2. 준비 -->
+<div class="page">
+<h2>2. 준비: 공구 · 안전 · 체결 규칙</h2>
+<h3>2-1. 공구</h3>
+<table>
+  <tr><th>공구</th><th>쓰는 작업</th><th>준비</th></tr>
+  <tr><td>납땜 인두 80W 이상 (온도 조절, 큰 끌팁)</td><td>XT90·XT60·12AWG 납땜</td><td>□</td></tr>
+  <tr><td>열융착 인서트 팁 (M3)</td><td>PETG에 인서트(3) 압입</td><td>□</td></tr>
+  <tr><td>와이어 스트리퍼 (10~24AWG)</td><td>피복 제거</td><td>□</td></tr>
+  <tr><td>링 단자 압착기 (래칫), 페룰 압착기</td><td>링 단자(20), 페룰(21)</td><td>□</td></tr>
+  <tr><td>열풍기</td><td>열수축(24·25)</td><td>□</td></tr>
+  <tr><td>육각렌치 볼엔드 1.5/2/2.5/3mm</td><td>M2.5~M5 볼트</td><td>□</td></tr>
+  <tr><td><b>토크 드라이버 0.4~2N·m</b></td><td>모터 M3 볼트 1.2N·m</td><td>□</td></tr>
+  <tr><td>전동 드릴 + Ø3.4·Ø4.1 비트, 센터펀치</td><td>30T 풀리 구멍, CAN선 꼬기</td><td>□</td></tr>
+  <tr><td>리벳너트 공구 (M4)</td><td>리벳너트(44)</td><td>□</td></tr>
+  <tr><td>축용 스냅링 플라이어</td><td>스냅링(33·34)</td><td>□</td></tr>
+  <tr><td>멀티미터(14), 캘리퍼스(77)</td><td>전압·저항·치수 확인</td><td>□</td></tr>
+  <tr><td>보안경, 내열 매트, LiPo 가방</td><td>납땜·드릴·배터리</td><td>□</td></tr>
+</table>
+
+<h3>2-2. 안전 규칙</h3>
+<div class="warn">
+<b>LiPo 배터리</b>: 충전은 반드시 LiPo 가방 안에서, 사람이 보는 동안만. 부풀거나 뜨거워지면 즉시 사용 중지. 셀당 3.5V 아래로 쓰지 말 것(셀 체커(53)가 경고).<br>
+<b>전원 작업</b>: 배선을 만지기 전에 E-stop을 누르고 XT90-S를 뽑는다. 벤치 전원은 처음 켤 때 전류 제한을 2A로 낮게.<br>
+<b>모터</b>: 11N·m는 손가락을 다칠 수 있는 힘. 관절 사이에 손을 넣은 채 명령을 보내지 않는다. 처음 움직일 때는 토크 제한을 낮게.<br>
+<b>회생 전기</b>: 모터를 빨리 돌리다 멈추면 전기가 거꾸로 흐른다. 벤치 전원만 쓸 때는 브레이크 저항 또는 드라이버의 역전류 제한(dc_max_negative_current) 설정.
+</div>
+
+<h3>2-3. 체결 규칙</h3>
+<table>
+  <tr><th>규칙</th><th>내용</th></tr>
+  <tr><td>모터 나사 깊이 5mm</td><td>볼트 길이 = 판 두께 합 + 와셔 + 4.5mm. 볼트 끝이 구멍 바닥에 닿으면 조여지지 않음</td></tr>
+  <tr><td>모터 체결 볼트</td><td>12.9 강 볼트(35·36) + Loctite 243(78). <b>토크 1.2N·m까지만</b> (모터 하우징이 알루미늄이라 나사산 손상 주의)</td></tr>
+  <tr><td>판금끼리</td><td>SUS 볼트(37~41) + 와셔(42·43) + 나일론 너트(59·60). M3 0.8N·m, M4 1.8N·m</td></tr>
+  <tr><td>PETG 인서트</td><td>인서트(3)를 인두로 수직으로 천천히 압입. 볼트는 0.4~0.6N·m (너무 세면 인서트가 돌아감)</td></tr>
+  <tr><td>모터 출력 핀</td><td>모터 출력면의 Ø4 핀 3개가 판의 Ø4.1 구멍에 맞아야 함. 핀이 안 맞으면 억지로 조이지 말 것</td></tr>
+</table>
+</div>
+
+<!-- 3. 1단계 -->
+<div class="page">
+<h2>3. 1단계: 모터 1개 책상 시험</h2>
+<p><b>목표</b>: 모터 12개를 다 사기 전에, 2개로 토크·열·백래시·DE가 사양대로인지 확인한다. 결과가 나쁘면 설계를 바꿔야 하므로 가장 먼저 하는 단계.</p>
+<p><b>필요한 부품</b>: 모터 (56) ×2, USB-CAN (10), 벤치 전원 (67), XT30(2+2) 연장 케이블 (66), 바나나 플러그 (11), 벤치용 퓨즈 홀더 (12), 16AWG (48), 24AWG 키트 (17), 로드셀+HX711 (68), 아두이노 (13), 분동 (73), 아이볼트·와이어 (61), 다이얼 게이지 (72), 멀티미터 (14), M3×8·M3×10 12.9 볼트 (35·36), Loctite (78), PETG (71), 열수축 (24)</p>
+
+<h3>3-1. 준비물 만들기</h3>
+<div class="step"><div class="box"></div><div><span class="no">1.</span> <b>모터 고정 지그</b>: PETG(71) 블록 또는 알루미늄 판에 모터 뒷면 구멍(PCD 74mm, 8개, Ø3.4)과 중앙 Ø62 구멍을 낸다. 모터를 <span class="part">M3×8 12.9 볼트(35) 8개 + Loctite(78)</span>로 1.2N·m 고정하고, C클램프로 책상에 고정한다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">2.</span> <b>전원 케이블</b>: 벤치 전원(67) + 단자 → <span class="part">바나나 플러그(11)</span> → 16AWG 적(48) → <span class="part">ATO 퓨즈 홀더(12)</span> → XT30(2+2) 케이블(66)의 + 핀. − 쪽은 흑선으로 바로. 납땜부는 열수축(24).</div></div>
+<div class="step"><div class="box"></div><div><span class="no">3.</span> <b>CAN 선</b>: XT30(2+2) 신호 핀 2개(CANH·CANL)를 24AWG 노랑·초록(17)으로 USB-CAN(10) 단자에. USB-CAN의 <b>120Ω 스위치 ON</b>.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">4.</span> <b>확인</b>: 전원 끈 상태에서 멀티미터(14)로 CANH–CANL 저항을 잰다. <b>약 60Ω</b>이면 정상 (USB-CAN 120Ω과 모터 120Ω이 병렬). 120Ω이면 한쪽 종단이 꺼진 것.</div></div>
+
+<h3>3-2. 첫 전원과 설정</h3>
+<div class="step"><div class="box"></div><div><span class="no">5.</span> 벤치 전원을 <b>24.0V, 전류 제한 2A</b>로 맞추고 출력 ON. 전류가 수백 mA 안에서 안정되는지 본다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">6.</span> PC에 USB-CAN 연결 → odrivetool 또는 python-can으로 통신. <b>모터 ID 설정</b>(첫 모터 1), <b>CAN 속도 500k → 1M</b>, 엔코더 보정. 두 번째 모터도 같은 방법(ID 2).</div></div>
+<div class="step"><div class="box"></div><div><span class="no">7.</span> 손으로 출력축을 돌리며 각도 값이 따라 바뀌는지 확인. <b>전원을 껐다 켜도 같은 각도</b>가 나오면 DE 정상.</div></div>
+
+<h3>3-3. 측정</h3>
+<div class="step"><div class="box"></div><div><span class="no">8.</span> <b>로드셀 교정</b>: 로드셀(68) → HX711 → 아두이노(13) → PC. <span class="part">분동 2kg(73)</span>을 달아 값 = 19.6N이 되도록 계수를 맞춘다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">9.</span> <b>토크 시험</b>: 출력 플랜지에 토크 암(알루미늄 3×20×250, 구멍 중심 200.0mm)을 <span class="part">M3×10 12.9(36) 6개</span>로 체결. 암 끝 → 아이볼트·와이어(61) → 로드셀 → 고정점. 전류 제한을 단계적으로 올리며 명령 토크 증가. <b>토크 = 힘 × 0.2m</b>. 목표: 24A에서 약 11N·m.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">10.</span> <b>열 시험</b>: 5N·m를 20~30분 유지. K형 열전대를 모터 하우징에 캡톤 테이프로 붙이고 멀티미터(14)로 1분마다 기록.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">11.</span> <b>백래시</b>: 출력을 위치 명령으로 붙잡은 상태에서, 토크 암의 반경 50mm 지점에 다이얼 게이지(72)를 대고 손으로 좌우로 민다. 사양 15arcmin = 약 0.22mm (50 × tan 0.25°).</div></div>
+<table>
+  <tr><th>측정 항목</th><th>목표</th><th>모터 1</th><th>모터 2</th><th>판정</th></tr>
+  <tr><td>최대 토크 (24A)</td><td>≥ 10N·m</td><td></td><td></td><td></td></tr>
+  <tr><td>5N·m 30분 후 온도</td><td>기록</td><td></td><td></td><td></td></tr>
+  <tr><td>백래시 (r = 50mm)</td><td>≤ 0.22mm</td><td></td><td></td><td></td></tr>
+  <tr><td>전원 재투입 후 각도 유지 (DE)</td><td>같음</td><td></td><td></td><td></td></tr>
+</table>
+<div class="note"><b>결과 판단</b>: 모두 OK면 나머지 모터 구매 확정. 토크·열이 부족하면 HANDOFF 6장의 대안(목표 7kg / 무릎 2:1 / 무릎만 GIM8108-8) 중 선택.</div>
+</div>
+
+<!-- 4. 2단계 -->
+<div class="page">
+<h2>4. 2단계: 다리 1개 조립과 시험대</h2>
+<p><b>목표</b>: 다리 1개(FL)를 실제로 조립해 치수·벨트·강도·배선을 확인하고, Pi 5로 스쿼트·낙하 시험을 한다. 여기서 찾은 문제를 고친 뒤 나머지 3개 다리와 몸통을 만든다.</p>
+
+<h3>4-1. 다리 시험대 (지그)</h3>
+<div class="step"><div class="box"></div><div><span class="no">1.</span> <span class="part">2020 프로파일(79)</span> 500mm ×4로 기둥·바닥, 300mm ×4로 가로대. 코너 브래킷·T너트·M5 볼트로 사각 탑 조립.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">2.</span> 한쪽 기둥에 <b>MGN12 레일 400mm</b>, 캐리지에 <b>캐리지판</b>(외전 마운트와 같은 PCD 74 구멍). 캐리지판이 "몸통" 역할 → 위아래로만 미끄러진다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">3.</span> 바닥에 EVA 폼 20mm (낙하 완충) + 레일 하한 스토퍼.</div></div>
+<div class="todo">레일·브래킷·EVA 폼·캐리지판은 아직 구매처 미정(보류 목록). 지그 CAD도 없음 → 실물 맞춤.</div>
+
+<h3>4-2. 외전 관절</h3>
+<div class="step"><div class="box"></div><div><span class="no">4.</span> 캐리지판에 <b>외전 모터(ID 1)</b> 뒷면을 <span class="part">M3×8 12.9(35) 8개 + 와셔(42) + Loctite(78)</span>, 1.2N·m.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">5.</span> 외전 모터 출력에 <b>외전 스페이서 + 외전 U프레임</b>(알루미늄 2mm 판금)을 <span class="part">M3×10 12.9(36) 6개</span>. 출력면 Ø4 핀 3개가 구멍에 들어가는지 먼저 확인. → U프레임이 외전 축을 중심으로 좌우로 흔들린다.</div></div>
+
+<h3>4-3. 고관절 스택 (그림 2의 순서)</h3>
+<div class="step"><div class="box"></div><div><span class="no">6.</span> <b>고관절 모터(ID 2)</b> 뒷면 → U프레임의 고관절 장착판, <span class="part">M3×8 12.9 ×8</span>.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">7.</span> <b>무릎 모터(ID 3)</b> 뒷면 → 무릎 장착판, <span class="part">M3×8 12.9 ×8</span>. 두 모터가 같은 축(고관절 축)에 마주 보고 놓인다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">8.</span> <b>고정 스핀들 Ø30</b>(중공)을 스핀들 플랜지로 U프레임(무릎 모터 쪽)에 <span class="part">M3 볼트(38) + 나일론 너트(59)</span>. 이 스핀들은 돌지 않는다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">9.</span> 스핀들 안에 <span class="part">6801ZZ(64) 2개</span>를 넣고 <b>Ø12 구동축(미스미 홈 가공 축)</b>을 통과. 한쪽 끝 = 무릎 모터 출력과 허브로 연결(<span class="part">M3×10 12.9 ×6</span>), 다른 끝 = <span class="part">20T 풀리(27)</span>, 무두볼트로 D컷 면 고정. 양끝 홈에 <span class="part">스냅링 Ø12(33)</span>.</div></div>
+<div class="todo">무릎 모터 출력 ↔ 구동축 연결 허브의 형상은 CAD에서 아직 확정 안 됨. 조립 전 Fusion에서 단면 확인 필요.</div>
+
+<h3>4-4. 상퇴 (허벅지)</h3>
+<div class="step"><div class="box"></div><div><span class="no">10.</span> <b>상퇴 안판</b>(1.5mm)을 고관절 모터 출력에 출력 스페이서와 함께 <span class="part">M3×10 12.9 ×6</span>. → 상퇴가 고관절 모터와 함께 돈다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">11.</span> <b>상퇴 바깥판</b> 구멍에 <span class="part">6806ZZ(62)</span>를 넣고 리테이너 내·외로 누른다(<span class="part">M3×10 SUS(39) + 나일론 너트(59)</span>). 이 베어링을 스핀들에 끼운다. (리테이너가 내륜을 잡지 못하면 <span class="part">스냅링 Ø30(34)</span> 사용)</div></div>
+<div class="note">이제 상퇴는 <b>한쪽 = 고관절 모터 출력, 다른 쪽 = 6806 베어링</b>으로 양쪽 지지된다. 무릎 모터의 구동축은 6806 안쪽의 스핀들을 관통하므로, 상퇴가 돌아도 구동축은 따로 돈다.</div>
+<div class="step"><div class="box"></div><div><span class="no">12.</span> 안판·바깥판 사이를 <b>횡연결판 상·하</b>로 묶는다(<span class="part">M3×8 SUS(38) + 와셔 + 나일론 너트</span>). → 두 판이 상자처럼 묶여 비틀림에 강해진다.</div></div>
+
+<h3>4-5. 하퇴와 무릎</h3>
+<div class="step"><div class="box"></div><div><span class="no">13.</span> <b>하퇴 출력</b>: PETG(71), 벽 3mm 중공, 표면층 1.2mm, 코어 30~40% 인필, 길이 방향을 출력판(XY)에 눕혀서. 끝단·풀리 자리·베어링 리테이너 자리에 <span class="part">M3 인서트(3)</span> 압입.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">14.</span> <span class="part">30T 풀리(28)</span> 측면에 Ø3.4 구멍 4개(하퇴 구멍 PCD에 맞춰 센터펀치 후 드릴). 하퇴에 <span class="part">M3×12 SUS(37) ×4</span>, 0.6N·m. → 풀리와 하퇴가 한 몸.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">15.</span> <b>무릎 피벗</b>: 상퇴 아래 끝 양쪽 판에 <span class="part">6001ZZ(63) 2개</span>. <b>Ø12 피벗 축</b>을 상퇴 → 30T 풀리·하퇴 → 반대쪽 상퇴 순서로 통과. 양끝 <span class="part">스냅링 Ø12(33)</span>. 6001 리테이너는 <span class="part">M3×10 + 인서트</span>.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">16.</span> <span class="part">벨트 530mm(29)</span>를 20T(위)와 30T(아래)에 건다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">17.</span> <span class="part">백아이들러 Ø45(30)</span>를 상퇴의 장공 지지판 내·외 사이에 <b>Ø10 숄더볼트 + M8 나일론 너트</b>로 건다. 아이들러를 벨트 <b>바깥면</b>에 대고 장공을 따라 밀어 팽팽하게 한 뒤 <span class="part">M3×12(37) + 너트</span>로 장공 고정.</div></div>
+<div class="note"><b>벨트 장력 원리</b>: 두 풀리만으로 계산한 경로는 525.3mm인데 벨트는 530mm(가장 가까운 표준 길이)라 4.7mm가 남는다. 아이들러가 벨트를 바깥에서 눌러 이 여유를 흡수한다. 너무 세게 당기면 베어링 부담, 너무 느슨하면 이가 튄다 → 손가락으로 벨트 중간을 눌러 5mm 정도 들어가는 정도에서 시작해 시험으로 조정.</div>
+<div class="todo">아이들러 핀이 Ø5 → Ø10으로 바뀜(미스미 아이들러 보어 Ø10). CAD의 핀 구멍·장공 폭 수정 필요. 아이들러는 15mm 벨트용 폭 형번으로 주문.</div>
+<div class="step"><div class="box"></div><div><span class="no">18.</span> <b>발</b>: TPU(65)로 출력(인필 30~50%), 하퇴 끝에 <span class="part">M3×16(40) + 인서트</span>.</div></div>
+</div>
+
+<div class="page">
+<h3>4-6. 다리 배선</h3>
+<svg width="680" height="190" viewBox="0 0 680 190">
+  <g font-size="10">
+  <rect x="10" y="70" width="80" height="40" rx="5" fill="#fff" stroke="#333"/><text x="50" y="88" text-anchor="middle">XT60 수 (51)</text><text x="50" y="101" text-anchor="middle" font-size="9">다리 쪽</text>
+  <line x1="90" y1="90" x2="160" y2="90" stroke="#c0392b" stroke-width="4"/><text x="125" y="82" text-anchor="middle" font-size="9">14AWG</text>
+  <circle cx="165" cy="90" r="7" fill="#c0392b"/><text x="165" y="118" text-anchor="middle" font-size="9">납땜 분기</text>
+  <g stroke="#c0392b" stroke-width="2.5" fill="none"><path d="M172,90 L300,40"/><path d="M172,90 L300,90"/><path d="M172,90 L300,140"/></g>
+  <text x="235" y="55" font-size="9">16AWG 100mm</text><text x="235" y="86" font-size="9">16AWG 250mm</text><text x="235" y="128" font-size="9">16AWG 330mm</text>
+  <rect x="300" y="25" width="120" height="30" rx="4" fill="#dfe7f3" stroke="#333"/><text x="360" y="44" text-anchor="middle">외전 모터 ID1</text>
+  <rect x="300" y="75" width="120" height="30" rx="4" fill="#dfe7f3" stroke="#333"/><text x="360" y="94" text-anchor="middle">고관절 모터 ID2</text>
+  <rect x="300" y="125" width="120" height="30" rx="4" fill="#dfe7f3" stroke="#333"/><text x="360" y="144" text-anchor="middle">무릎 모터 ID3</text>
+  <text x="300" y="20" font-size="9">각 모터: XT30(2+2) (18) = 전원 2 + CAN 2</text>
+  <g stroke="#1f5fbf" stroke-width="2" fill="none"><path d="M560,40 L425,40"/><path d="M560,40 L560,90 L425,90"/><path d="M560,90 L560,140 L425,140"/><path d="M560,140 L640,140"/></g>
+  <text x="565" y="30" font-size="9" fill="#1f5fbf">HAT can0에서</text><text x="600" y="155" font-size="9" fill="#1f5fbf">다음 다리로 →</text>
+  <text x="440" y="70" font-size="9" fill="#1f5fbf">CAN 꼬임선, 분기 ≤ 5cm</text>
+  </g>
+</svg>
+<div class="fig">그림 3. 다리 하네스 (FL 예). 전원은 한 점에서 3갈래, CAN은 모터를 차례로 지나가는 한 줄</div>
+<div class="step"><div class="box"></div><div><span class="no">19.</span> <b>전원</b>: 다리 쪽 <span class="part">XT60 수(51)</span> → <span class="part">14AWG(47)</span> 80mm → 3갈래 납땜 + <span class="part">접착 열수축(25)</span> → <span class="part">16AWG(48)</span> 100/250/330mm → 각 모터 <span class="part">XT30(2+2)(18)</span> 전원 핀. 외전 관절을 지나는 선은 <b>80mm 여유 고리</b>.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">20.</span> <b>CAN</b>: 24AWG 노랑(CANH)·초록(CANL)(17)을 전동 드릴로 <b>1m당 30회 이상</b> 꼰다. 외전 → 고관절 → 무릎 순서로 지나가며, 각 모터 앞에서 5cm 이하로 분기해 XT30(2+2) 신호 핀에 납땜.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">21.</span> 전원선과 CAN선을 같은 슬리브에 넣되 서로 꼬지 않는다. <span class="part">케이블 타이·마운트(26)</span>로 고정. 색 규칙: 적 +24V, 흑 GND, 노랑 CANH, 초록 CANL, 흰 코일.</div></div>
+
+<h3>4-7. Pi 5 준비와 다리 시험</h3>
+<div class="step"><div class="box"></div><div><span class="no">22.</span> Pi 5(75)에 <span class="part">액티브 쿨러(1)</span> → <span class="part">스태킹 헤더(2)</span> → <span class="part">M2.5 스페이서(4)</span> 위에 <span class="part">CAN HAT(76)</span>. HAT의 <b>120Ω 점퍼 ON</b>. microSD에 OS, <span class="part">27W 어댑터(15)</span>로 부팅.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">23.</span> HAT can0 단자 ← 다리 CAN선(끝에 <span class="part">페룰(21)</span>). HAT CAN GND ← 모터 전원 GND (HAT이 절연형이라 기준 전압을 맞추는 선이 따로 필요).</div></div>
+<div class="step"><div class="box"></div><div><span class="no">24.</span> 벤치 전원으로 다리에 24V. 모터 ID 1·2·3 확인, 마지막 모터(무릎)만 enable_r120 = True. 전원 끄고 CANH–CANL ≈ 60Ω 확인.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">25.</span> 관절 하나씩 천천히 움직여 <b>부호(+/−)</b> 확인 → 무릎 <b>1.5:1 변환</b> 확인 → 역기구학 <b>스쿼트</b> → 레일에서 조금 떨어뜨리는 <b>낙하 시험</b>.</div></div>
+<table>
+  <tr><th>2단계에서 확인할 것</th><th>결과</th></tr>
+  <tr><td>모든 볼트 구멍·핀이 맞는가 (판금 치수, 절곡)</td><td></td></tr>
+  <tr><td>벨트 장력, 이 튐 없음, 아이들러 위치 여유</td><td></td></tr>
+  <tr><td>외전 ±20°, 고관절·무릎 전 범위에서 선이 당기지 않음</td><td></td></tr>
+  <tr><td>스쿼트·낙하 후 볼트 풀림, 판 휨, PETG 균열 없음</td><td></td></tr>
+  <tr><td>다리 1개 최대 전류 (→ 다리 퓨즈 25A가 맞는지)</td><td></td></tr>
+  <tr><td>모터 온도 (연속 스쿼트 10분)</td><td></td></tr>
+</table>
+</div>
+
+<!-- 5. 3단계 -->
+<div class="page">
+<h2>5. 3단계: 로봇 전체 조립</h2>
+<h3>5-1. 몸통</h3>
+<div class="step"><div class="box"></div><div><span class="no">1.</span> <b>섀시</b>(알루미늄 3mm)에 <b>외전 마운트 4개</b>를 <span class="part">M4×12(41) + 와셔(43) + 나일론 너트(60)</span>, 1.8N·m. 앞뒤 고관절 간격 380mm, 마운트 면 |x| = 140mm.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">2.</span> 섀시 아래층에 <b>배터리 레지 ×4·서포트 ×4</b>(PETG) → <b>배터리 트레이</b>. 트레이 <b>래치 ×2</b>는 인서트 + <span class="part">M3×10</span>.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">3.</span> 섀시 접근 덮개 자리에 <span class="part">M4 리벳너트(44)</span> 4개.</div></div>
+<div class="todo">리벳너트는 지금 고른 형번이 판 두께 1.5~2.5mm용 → 3mm용 형번으로 다시 주문.</div>
+
+<h3>5-2. 다리 4개</h3>
+<div class="step"><div class="box"></div><div><span class="no">4.</span> 2단계와 같은 순서로 FR·RL·RR 조립. <b>오른쪽 다리는 거울상</b>, <b>무릎은 4개 모두 뒤로 꺾임(&gt;&gt;)</b>.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">5.</span> 각 다리 외전 모터를 외전 마운트에 <span class="part">M3×8 12.9 ×8 + Loctite</span>, 1.2N·m.</div></div>
+
+<h3>5-3. 전원 회로 (전장 선반)</h3>
+<svg width="680" height="230" viewBox="0 0 680 230">
+  <g font-size="10">
+  <rect x="10" y="30" width="70" height="40" rx="4" fill="#fff" stroke="#333"/><text x="45" y="48" text-anchor="middle">XT90-S</text><text x="45" y="62" text-anchor="middle" font-size="9">(55) +</text>
+  <rect x="120" y="20" width="110" height="60" rx="4" fill="#fff" stroke="#333"/><text x="175" y="40" text-anchor="middle">접촉기 (69)</text><text x="138" y="70" font-size="9">A</text><text x="210" y="70" font-size="9">B</text>
+  <rect x="270" y="30" width="80" height="40" rx="4" fill="#fff" stroke="#333"/><text x="310" y="48" text-anchor="middle">MIDI 60A</text><text x="310" y="62" text-anchor="middle" font-size="9">(80)</text>
+  <rect x="390" y="25" width="60" height="140" rx="4" fill="#fbe3e0" stroke="#c0392b"/><text x="420" y="45" text-anchor="middle">버스바</text><text x="420" y="60" text-anchor="middle">+</text>
+  <g stroke="#c0392b" stroke-width="3.5"><line x1="80" y1="50" x2="120" y2="50"/><line x1="230" y1="50" x2="270" y2="50"/><line x1="350" y1="50" x2="390" y2="50"/></g>
+  <text x="95" y="44" font-size="8">12AWG</text><text x="245" y="44" font-size="8">12AWG</text><text x="360" y="44" font-size="8">12AWG</text>
+  <path d="M140,80 L140,110 L160,110" stroke="#c0392b" stroke-width="1.5" fill="none"/>
+  <rect x="160" y="100" width="40" height="18" fill="#fff" stroke="#333"/><text x="180" y="113" text-anchor="middle" font-size="8">47Ω</text>
+  <rect x="210" y="100" width="40" height="18" fill="#fff" stroke="#333"/><text x="230" y="113" text-anchor="middle" font-size="8">버튼(7)</text>
+  <path d="M200,109 L210,109 M250,109 L265,109 L265,80 L215,80" stroke="#c0392b" stroke-width="1.5" fill="none"/>
+  <text x="160" y="132" font-size="9">프리차지 (A–B 사이 우회)</text>
+  <path d="M130,80 L130,165 L150,165" stroke="#d9480f" stroke-width="1.5" fill="none" stroke-dasharray="4 2"/>
+  <rect x="150" y="156" width="40" height="18" fill="#fff" stroke="#333"/><text x="170" y="169" text-anchor="middle" font-size="8">2A</text>
+  <rect x="200" y="156" width="55" height="18" fill="#fde2d3" stroke="#d9480f"/><text x="227" y="169" text-anchor="middle" font-size="8">E-stop(6)</text>
+  <rect x="265" y="156" width="70" height="18" fill="#fff" stroke="#333"/><text x="300" y="169" text-anchor="middle" font-size="8">코일 + / −</text>
+  <path d="M190,165 L200,165 M255,165 L265,165 M335,165 L390,165" stroke="#d9480f" stroke-width="1.5" fill="none" stroke-dasharray="4 2"/>
+  <text x="270" y="190" font-size="8">코일 양끝 다이오드(5)</text><text x="398" y="160" font-size="9">−</text>
+  <g stroke="#c0392b" stroke-width="2"><line x1="450" y1="60" x2="520" y2="60"/><line x1="450" y1="85" x2="520" y2="85"/><line x1="450" y1="110" x2="520" y2="110"/><line x1="450" y1="135" x2="520" y2="135"/></g>
+  <text x="525" y="64" font-size="9">FL: 25A(9) → XT60(51)</text><text x="525" y="89" font-size="9">FR: 25A → XT60</text><text x="525" y="114" font-size="9">RL: 25A → XT60</text><text x="525" y="139" font-size="9">RR: 25A → XT60</text>
+  <line x1="450" y1="150" x2="520" y2="150" stroke="#c0392b" stroke-width="1.5"/><text x="525" y="154" font-size="9">3A → DC-DC(8) → Pi 5</text>
+  <text x="455" y="190" font-size="9">TVS 다이오드: 버스바 + ↔ − 직결</text>
+  <text x="10" y="215" font-size="9">XT90-S − 단자 → 12AWG 흑 → 버스바 −</text>
+  </g>
+</svg>
+<div class="fig">그림 4. 전원 회로 (비율 아님)</div>
+<div class="step"><div class="box"></div><div><span class="no">6.</span> 전장 선반 2개를 섀시에. 선반에 <span class="part">접촉기(69)</span>(M4), <span class="part">MIDI 퓨즈 홀더(80)</span>(M4), <b>버스바 +/−</b>(M3), <span class="part">DC-DC(8)</span>.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">7.</span> <b>주 전원 (12AWG(46))</b>: XT90-S + → 접촉기 A / 접촉기 B → MIDI 퓨즈 → 버스바 + / XT90-S − → 버스바 −. 선 끝 <span class="part">링 단자(20)</span> 압착 + <span class="part">접착 열수축(25)</span>.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">8.</span> <b>E-stop 코일 회로 (20AWG(16·50))</b>: 접촉기 A → 2A 퓨즈 → <span class="part">JST-SM(19)</span> → 커버의 <span class="part">E-stop(6)</span> NC 접점 → JST-SM → 접촉기 코일 + → 코일 − → 버스바 −. 코일 양끝에 <span class="part">다이오드(5)</span>: 띠(캐소드)가 + 쪽.</div></div>
+<div class="note"><b>E-stop 원리</b>: 접촉기는 코일에 전기가 들어가 있는 동안만 붙어 있는 큰 스위치입니다. E-stop을 누르면 코일 전기가 끊겨 접촉기가 떨어지고 모터 전원이 차단됩니다. 다이오드는 코일이 끊길 때 생기는 역전압 불꽃이 E-stop 접점을 태우지 않게 흡수합니다.</div>
+<div class="step"><div class="box"></div><div><span class="no">9.</span> <b>프리차지</b>: 접촉기 A → 47Ω 25W 저항 → <span class="part">프리차지 버튼(7)</span> → 접촉기 B (20AWG). 저항은 방열을 위해 섀시에 볼트로.</div></div>
+<div class="note"><b>프리차지 원리</b>: 모터 드라이버 12개 안의 콘덴서가 비어 있을 때 접촉기를 바로 붙이면 순간 큰 전류가 흘러 접점이 녹아붙을 수 있습니다. 버튼을 2~3초 눌러 저항을 통해 천천히 미리 채워 둡니다.</div>
+<div class="step"><div class="box"></div><div><span class="no">10.</span> <b>TVS 다이오드</b>를 버스바 +/− 사이에 리드를 짧게(30mm 이하). 접촉기가 떨어질 때 생기는 순간 과전압을 흡수.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">11.</span> <b>다리 분기</b>: 버스바 → <span class="part">ATO 퓨즈 홀더(9) + 25A</span> → <span class="part">14AWG(47)</span> 220mm → 몸통 쪽 <span class="part">XT60 암(51)</span>. 다리 4개 모두.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">12.</span> <b>5V</b>: 버스바 → 3A 퓨즈 → <span class="part">18AWG(49)</span> → DC-DC 입력. DC-DC 출력 → <span class="part">USB-C 케이블(22)</span> → Pi 5. Pi의 config.txt에 <code>usb_max_current_enable=1</code>.</div></div>
+<div class="todo">버스바, 47Ω 저항, TVS, 25A/2A/3A 퓨즈, 미니 블레이드 홀더는 아직 구매처 미정(보류 목록).</div>
+</div>
+
+<div class="page">
+<h3>5-4. 제어부와 CAN</h3>
+<div class="step"><div class="box"></div><div><span class="no">13.</span> 다른 선반에 Pi 5 + 쿨러 + HAT 묶음(스페이서(4)), <span class="part">IMU(74)</span>를 몸 중심 가까이 스페이서로.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">14.</span> IMU → Pi GPIO <span class="part">점퍼선(23)</span>: 3.3V, GND, TX, RX (UART 방식 권장. Pi에서 I2C는 이 센서와 궁합 문제 보고가 있음).</div></div>
+<svg width="680" height="150" viewBox="0 0 680 150">
+  <g font-size="10">
+  <rect x="10" y="50" width="90" height="50" rx="5" fill="#eef3fa" stroke="#1f3864"/><text x="55" y="72" text-anchor="middle">CAN HAT</text><text x="55" y="87" text-anchor="middle" font-size="9">120Ω 점퍼 ON</text>
+  <g stroke="#1f5fbf" stroke-width="2" fill="none"><path d="M100,62 L660,62"/><path d="M100,92 L660,92"/></g>
+  <text x="110" y="55" font-size="9" fill="#1f5fbf">can0 (앞다리)</text><text x="110" y="110" font-size="9" fill="#1f5fbf">can1 (뒷다리)</text>
+  <g font-size="9"><text x="165" y="40">FL1</text><text x="225" y="40">FL2</text><text x="285" y="40">FL3</text><text x="345" y="40">FR4</text><text x="405" y="40">FR5</text><text x="465" y="40" font-weight="bold" fill="#c00">FR6 ●120Ω</text>
+  <text x="165" y="130">RL7</text><text x="225" y="130">RL8</text><text x="285" y="130">RL9</text><text x="345" y="130">RR10</text><text x="405" y="130">RR11</text><text x="465" y="130" font-weight="bold" fill="#c00">RR12 ●120Ω</text></g>
+  </g>
+</svg>
+<div class="fig">그림 5. CAN 버스 2개. 끝 모터(ID 6, 12)만 120Ω ON, 나머지 10개는 OFF</div>
+<div class="step"><div class="box"></div><div><span class="no">15.</span> <b>can0</b>: HAT → FL 외전 → FL 고관절 → FL 무릎 → FR 외전 → FR 고관절 → FR 무릎(끝). <b>can1</b>: RL → RR 같은 방식. ID 1~6 앞, 7~12 뒤.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">16.</span> 끝 모터 2개(ID 6, 12)만 enable_r120 = True, 나머지 10개 False. 전원 끄고 <b>버스마다 CANH–CANL ≈ 60Ω</b> 확인.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">17.</span> 배선 정리: <span class="part">케이블 타이·마운트(26)</span>. 전원선과 CAN선은 꼬지 말고 가능하면 떨어뜨린다.</div></div>
+
+<h3>5-5. 배터리와 덮개</h3>
+<div class="step"><div class="box"></div><div><span class="no">18.</span> <span class="part">배터리(52)</span>를 <span class="part">충전기(70)</span>로 LiPo 가방 안에서 충전. <span class="part">셀 체커(53)</span>를 밸런스 단자에.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">19.</span> 배터리를 트레이에 넣고 <span class="part">스트랩(54)</span>으로 고정. 래치 걸기.</div></div>
+<div class="todo">배터리(DOGCOM 5500mAh, 926g)가 트레이 180×80mm에 들어가는지 받자마자 치수 확인. 무게가 예산보다 약 200g 많음.</div>
+<div class="step"><div class="box"></div><div><span class="no">20.</span> <b>커버</b>: 윗면에 E-stop(22mm 구멍)·프리차지 버튼. JST-SM 커넥터를 꽂고 커버를 M4×12로 닫는다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">21.</span> 배터리 접근 덮개를 <span class="part">널링 손나사(45)</span>로 닫는다.</div></div>
+
+<h2 style="margin-top:6mm">6. 처음 켜기와 끄기</h2>
+<div class="warn">처음 켤 때는 로봇을 <b>배를 위로 뒤집어 받침대에 올려</b> 다리가 허공에 뜬 상태로. 주변에 손·물건이 없게.</div>
+<div class="step"><div class="box"></div><div><span class="no">1.</span> E-stop이 <b>눌려 있는지</b> 확인.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">2.</span> 배터리 XT90-S 연결 (안티스파크라 불꽃 없음). 이때 Pi는 아직 꺼져 있다(DC-DC가 접촉기 뒤에 있으므로).</div></div>
+<div class="step"><div class="box"></div><div><span class="no">3.</span> <b>프리차지 버튼을 2~3초</b> 누른다.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">4.</span> 누른 채로 <b>E-stop을 돌려 푼다</b> → 접촉기 "딸깍" → 모터 12개와 Pi에 전원.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">5.</span> Pi 부팅 → 모터 12개 응답 확인 → 관절 하나씩 작게 움직이기.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">6.</span> 바닥에 놓고 <b>일어서기 → 제자리 걸음 → 걷기 → 트롯(250Hz)</b> 순서.</div></div>
+<div class="step"><div class="box"></div><div><span class="no">7.</span> <b>끌 때</b>: E-stop 누름 → 배터리 XT90-S 분리 → 배터리는 LiPo 가방에 보관.</div></div>
+</div>
+
+<!-- 7. 부록 -->
+<div class="page">
+<h2>7. 부록</h2>
+<h3>7-1. 부품 사용처 (부품리스트 No 순)</h3>
+<table>
+<tr><th style="width:7%">No</th><th style="width:30%">부품</th><th>쓰이는 곳</th><th style="width:9%">단계</th></tr>
+<tr><td>1</td><td>Pi 5 액티브 쿨러</td><td>Pi 5 방열</td><td>2·3</td></tr>
+<tr><td>2</td><td>GPIO 스태킹 헤더</td><td>쿨러 위로 CAN HAT 높이 확보</td><td>2·3</td></tr>
+<tr><td>3</td><td>M3 황동 인서트</td><td>하퇴·트레이·래치·발의 나사산</td><td>2·3</td></tr>
+<tr><td>4</td><td>M2.5 스페이서 키트</td><td>Pi·HAT·IMU 고정</td><td>2·3</td></tr>
+<tr><td>5</td><td>1N5408 다이오드</td><td>접촉기 코일 역전압 흡수</td><td>3</td></tr>
+<tr><td>6</td><td>비상 정지 스위치</td><td>접촉기 코일 차단 (커버 윗면)</td><td>3</td></tr>
+<tr><td>7</td><td>프리차지 버튼</td><td>전원 투입 전 콘덴서 예비 충전</td><td>3</td></tr>
+<tr><td>8</td><td>DC-DC 24V→5V</td><td>Pi 5 전원 (1개 예비)</td><td>3</td></tr>
+<tr><td>9</td><td>ATO 퓨즈 홀더 ×4</td><td>다리별 전원 보호</td><td>3</td></tr>
+<tr><td>10</td><td>USB-CAN</td><td>PC ↔ 모터 시험</td><td>1</td></tr>
+<tr><td>11</td><td>바나나 플러그</td><td>벤치 전원 연결</td><td>1</td></tr>
+<tr><td>12</td><td>벤치용 퓨즈 홀더</td><td>벤치 배선 보호</td><td>1</td></tr>
+<tr><td>13</td><td>아두이노 나노 + 점퍼</td><td>로드셀 값 읽기</td><td>1</td></tr>
+<tr><td>14</td><td>멀티미터</td><td>전압·60Ω·온도</td><td>전체</td></tr>
+<tr><td>15</td><td>Pi 27W 어댑터</td><td>책상에서 Pi 켜기</td><td>2</td></tr>
+<tr><td>16</td><td>20AWG 6색 키트</td><td>코일·프리차지 배선 (흰색)</td><td>3</td></tr>
+<tr><td>17</td><td>24AWG 6색 키트</td><td>CAN 꼬임선(노랑·초록), CAN GND(검정)</td><td>1·2·3</td></tr>
+<tr><td>18</td><td>XT30(2+2) ×14</td><td>모터 12개 전원+CAN 플러그 (2 예비)</td><td>2·3</td></tr>
+<tr><td>19</td><td>JST-SM 2핀</td><td>커버 E-stop 분리 커넥터</td><td>3</td></tr>
+<tr><td>20</td><td>링 단자 M5</td><td>12AWG 끝 → 퓨즈 홀더·버스바</td><td>3</td></tr>
+<tr><td>21</td><td>페룰 세트</td><td>HAT·E-stop·DC-DC 나사 단자</td><td>2·3</td></tr>
+<tr><td>22</td><td>USB-C 2핀 케이블</td><td>DC-DC → Pi 5</td><td>3</td></tr>
+<tr><td>23</td><td>점퍼선 F/F</td><td>IMU ↔ Pi GPIO</td><td>3</td></tr>
+<tr><td>24</td><td>열수축 튜브 세트</td><td>납땜부 절연</td><td>전체</td></tr>
+<tr><td>25</td><td>접착 열수축</td><td>링 단자·분기점 보강</td><td>2·3</td></tr>
+<tr><td>26</td><td>케이블 타이 + 마운트</td><td>배선 고정</td><td>2·3</td></tr>
+<tr><td>27</td><td>풀리 20T</td><td>무릎 구동 (구동축 끝)</td><td>2·3</td></tr>
+<tr><td>28</td><td>풀리 30T</td><td>무릎 피동 (하퇴에 고정)</td><td>2·3</td></tr>
+<tr><td>29</td><td>벨트 530mm</td><td>20T ↔ 30T</td><td>2·3</td></tr>
+<tr><td>30</td><td>백아이들러 Ø45</td><td>벨트 장력</td><td>2·3</td></tr>
+<tr><td>31</td><td>구동축 Ø12×45</td><td>무릎 모터 → 20T</td><td>2·3</td></tr>
+<tr><td>32</td><td>피벗 축 Ø12×50</td><td>무릎 회전축</td><td>2·3</td></tr>
+<tr><td>33</td><td>스냅링 Ø12</td><td>31·32 축 빠짐 방지</td><td>2·3</td></tr>
+<tr><td>34</td><td>스냅링 Ø30</td><td>6806 내륜 고정 (필요 시)</td><td>2·3</td></tr>
+<tr><td>35</td><td>M3×8 12.9</td><td>모터 뒷면 8구멍</td><td>1·2·3</td></tr>
+<tr><td>36</td><td>M3×10 12.9</td><td>모터 출력 6구멍</td><td>1·2·3</td></tr>
+<tr><td>37</td><td>M3×12 SUS</td><td>30T↔하퇴, 아이들러 장공</td><td>2·3</td></tr>
+<tr><td>38</td><td>M3×8 SUS</td><td>횡연결판, 스핀들 플랜지</td><td>2·3</td></tr>
+<tr><td>39</td><td>M3×10 SUS</td><td>리테이너, 브리지, 선반, 레지</td><td>2·3</td></tr>
+<tr><td>40</td><td>M3×16 SUS</td><td>하퇴 ↔ 발</td><td>2·3</td></tr>
+<tr><td>41</td><td>M4×12 SUS</td><td>외전 마운트, 커버, 접촉기</td><td>3</td></tr>
+<tr><td>42·43</td><td>평와셔 M3·M4</td><td>볼트·너트 밑</td><td>전체</td></tr>
+<tr><td>44</td><td>M4 리벳너트</td><td>덮개 손나사 받침 (섀시)</td><td>3</td></tr>
+<tr><td>45</td><td>널링 손나사</td><td>배터리 덮개</td><td>3</td></tr>
+<tr><td>46</td><td>12AWG</td><td>주 전원</td><td>3</td></tr>
+<tr><td>47</td><td>14AWG</td><td>다리 분기</td><td>2·3</td></tr>
+<tr><td>48</td><td>16AWG</td><td>모터별 전원, 벤치 케이블</td><td>1·2·3</td></tr>
+<tr><td>49</td><td>18AWG</td><td>DC-DC 입력</td><td>3</td></tr>
+<tr><td>50</td><td>20AWG</td><td>코일·프리차지</td><td>3</td></tr>
+<tr><td>51</td><td>XT60H ×5</td><td>다리 분리 커넥터</td><td>2·3</td></tr>
+<tr><td>52</td><td>배터리 6S</td><td>주 전원</td><td>3</td></tr>
+<tr><td>53</td><td>셀 체커</td><td>저전압 경보</td><td>3</td></tr>
+<tr><td>54</td><td>배터리 스트랩</td><td>배터리 고정</td><td>3</td></tr>
+<tr><td>55</td><td>XT90-S</td><td>배터리 연결 (안티스파크)</td><td>3</td></tr>
+<tr><td>56~58</td><td>모터 ×14</td><td>1단계 2, 2단계 1, 3단계 9 + 예비 2</td><td>1·2·3</td></tr>
+<tr><td>59·60</td><td>나일론 너트 M3·M4</td><td>관통 체결</td><td>전체</td></tr>
+<tr><td>61</td><td>아이볼트·와이어</td><td>토크 시험 연결</td><td>1</td></tr>
+<tr><td>62</td><td>6806ZZ</td><td>고관절 바깥 지지</td><td>2·3</td></tr>
+<tr><td>63</td><td>6001ZZ</td><td>무릎 피벗</td><td>2·3</td></tr>
+<tr><td>64</td><td>6801ZZ</td><td>구동축 지지</td><td>2·3</td></tr>
+<tr><td>65</td><td>TPU</td><td>발 패드</td><td>2·3</td></tr>
+<tr><td>66</td><td>XT30(2+2) 연장 케이블</td><td>벤치 시험</td><td>1</td></tr>
+<tr><td>67</td><td>벤치 전원</td><td>시험용 24V</td><td>1·2</td></tr>
+<tr><td>68</td><td>로드셀 + HX711</td><td>토크 측정</td><td>1</td></tr>
+<tr><td>69</td><td>접촉기</td><td>주 전원 스위치</td><td>3</td></tr>
+<tr><td>70</td><td>충전기</td><td>배터리 충전</td><td>3</td></tr>
+<tr><td>71</td><td>PETG</td><td>하퇴·트레이·지그 등</td><td>전체</td></tr>
+<tr><td>72</td><td>다이얼 게이지 + 베이스</td><td>백래시</td><td>1</td></tr>
+<tr><td>73</td><td>분동 2kg</td><td>로드셀 교정</td><td>1</td></tr>
+<tr><td>74</td><td>IMU BNO085</td><td>몸 자세 측정</td><td>3</td></tr>
+<tr><td>75</td><td>Raspberry Pi 5</td><td>두뇌</td><td>2·3</td></tr>
+<tr><td>76</td><td>CAN FD HAT</td><td>CAN 버스 2개</td><td>2·3</td></tr>
+<tr><td>77</td><td>캘리퍼스</td><td>치수 실측</td><td>전체</td></tr>
+<tr><td>78</td><td>Loctite 243</td><td>볼트 풀림 방지</td><td>전체</td></tr>
+<tr><td>79</td><td>2020 프로파일</td><td>다리 시험대</td><td>2</td></tr>
+<tr><td>80</td><td>MIDI 60A 퓨즈 + 홀더</td><td>주 전원 보호</td><td>3</td></tr>
+</table>
+
+<h3>7-2. 아직 없는 부품 (리스트 밖)</h3>
+<p>판금 전부(견적), 고정 스핀들 Ø30(견적), 버스바, 47Ω 25W 저항, TVS 5KP28A, 퓨즈 25A·2A·3A, 미니 블레이드 홀더, 편조 슬리브, Ø10 숄더볼트 + M8 나일론 너트, MGN12 레일, 코너 브래킷, EVA 폼, C클램프, 게임패드, microSD, 브레이크 저항</p>
+
+<h3>7-3. 조립 전에 확정해야 할 것</h3>
+<table>
+<tr><th>항목</th><th>영향</th><th>확인 시점</th><th>확인</th></tr>
+<tr><td>무릎 모터 출력 ↔ 구동축 허브 형상</td><td>4-3의 9번, 볼트 길이</td><td>판금 주문 전 (CAD)</td><td>□</td></tr>
+<tr><td>아이들러 핀 Ø10, 15mm 벨트용 아이들러 형번</td><td>4-5의 17번</td><td>판금 주문 전 (CAD)</td><td>□</td></tr>
+<tr><td>GDS68 커넥터 성별, CAN 포트 수</td><td>XT30(2+2) 성별, CAN 배선 방식</td><td>1단계 모터 수령 시</td><td>□</td></tr>
+<tr><td>enable_r120 기본값</td><td>종단저항 설정</td><td>1단계</td><td>□</td></tr>
+<tr><td>배터리 치수</td><td>트레이에 들어가는지</td><td>배터리 수령 시</td><td>□</td></tr>
+<tr><td>리벳너트 3mm용 형번</td><td>5-1의 3번</td><td>주문 전</td><td>□</td></tr>
+<tr><td>스페이서 두께</td><td>모터 출력 볼트 길이 (10mm 가정)</td><td>판금 주문 전 (CAD)</td><td>□</td></tr>
+<tr><td>접촉기 코일이 18V(방전 말기)에서 유지되는지</td><td>배터리 부족 시 갑자기 꺼짐</td><td>3단계 전 시험</td><td>□</td></tr>
+</table>
+
+<h3>7-4. 체결 토크 요약</h3>
+<table>
+<tr><th>체결</th><th>볼트</th><th>토크</th><th>나사 고정제</th></tr>
+<tr><td>모터 뒷면·출력</td><td>M3 12.9</td><td>1.2N·m (넘기지 말 것)</td><td>Loctite 243</td></tr>
+<tr><td>판금끼리 M3</td><td>M3 SUS + 나일론 너트</td><td>0.8N·m</td><td>-</td></tr>
+<tr><td>판금끼리 M4</td><td>M4 SUS + 나일론 너트</td><td>1.8N·m</td><td>-</td></tr>
+<tr><td>PETG 인서트</td><td>M3 SUS</td><td>0.4~0.6N·m</td><td>-</td></tr>
+<tr><td>아이들러 숄더볼트</td><td>Ø10 (M8)</td><td>판매처 권장값</td><td>Loctite 243</td></tr>
+</table>
+<p class="small">토크 값은 설계 계산과 일반 관행에 따른 추정값입니다. 1단계·2단계 시험에서 풀림이 보이면 조정하세요.</p>
+
+<h3>7-5. 작업 기록</h3>
+<table class="sig">
+<tr><th style="width:20%">단계</th><th style="width:20%">날짜</th><th>메모 (문제·고친 것)</th></tr>
+<tr><td>1단계 모터 시험</td><td></td><td></td></tr>
+<tr><td>2단계 다리 조립</td><td></td><td></td></tr>
+<tr><td>2단계 다리 시험</td><td></td><td></td></tr>
+<tr><td>3단계 몸통·전원</td><td></td><td></td></tr>
+<tr><td>3단계 첫 기립</td><td></td><td></td></tr>
+</table>
+</div>
+</body>
+</html>
