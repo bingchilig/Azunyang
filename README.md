@@ -1,8 +1,16 @@
 # Azunyang
 
-12-DOF 4족 로봇개 프로젝트 (GIM6010-8 액추에이터, Mini Cheetah 참고).
+12관절 4족 로봇개 프로젝트 (GIM6010-8 모터, 6S 배터리, Raspberry Pi 5 + CAN HAT, 목표 약 9kg).
 
-- 시작: `HANDOFF.md`를 먼저 읽기 (맨 아래 "진행 현황")
-- 3D 모델: Fusion 클라우드 `Azunyang_v0.1` (같은 Autodesk 계정으로 로그인)
-- Fusion 작업 기록: `fusion_logs/`
-- 시뮬레이션 내보내기: `exports/` (MuJoCo 검사 환경은 `python -m venv .venv-simcheck` 후 mujoco, trimesh 설치)
+## 먼저 볼 파일
+- 진행 계획: `진행계획_2026-11-22.md`
+- 구매 목록: `bom/구매예정_2026-11-22.md`
+- 무릎 벨트 구조·조사 계획: `bom/기계부품_조사계획_2026-11-22.md`
+- 조사 결과 원문: `bom/조사결과_2026-11-22.md`, 조사 프롬프트: `bom/조사프롬프트_2026-11-22.md`
+- 보유 공구: `tools/보유공구_2026-11-22.md`
+- 설계 보고서(예전 설계안): `reports/2026-11-12_설계보고서_v0.1.html`
+
+## 자료
+- 모터 도면·3D 모델: `actuator/GIM6010-8/`
+- 참고 자료: `references/` (다른 로봇 부품표, Mini Cheetah 출력용 파일 zip)
+- 예전 부품표·조립설명서·인수인계: `archive/2026-11-22_초기화/`
